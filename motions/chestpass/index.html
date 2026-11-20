@@ -319,10 +319,18 @@ const PHASES=[
 ];
 // ---- 解く
 let LEAN=null; const ARM=L1+L2;
-function ballAt(t){ return v3(...track(TR.ball,Math.min(t,TR.ball[TR.ball.length-1][0]))); }
+function ballRaw(t){ return v3(...track(TR.ball,Math.min(t,TR.ball[TR.ball.length-1][0]))); }
+let BOFF=null; // 胴にめり込まないための押し出し量（全時間で求めてならす）
+function ballAt(t){ const b=ballRaw(t); if(!BOFF) return b;
+  const x=Math.min(BOFF.length-1.001,Math.max(0,t*SMHZ)),i=Math.floor(x),f=x-i; return b.add(v3(...BOFF[i].map((v,n)=>v+(BOFF[i+1][n]-v)*f))); }
+const TORSO=[]; [J_.pelvis,J_.spine,J_.chest,J_.neck].forEach(j=>j.children.forEach(o=>{if(o.isMesh)TORSO.push(o);}));
+function torsoPush(B){ // ボールの中心からの最深のめり込み（体の前向きに押し出す量）
+  let mx=0; const v=new THREE.Vector3();
+  TORSO.forEach(o=>{const pos=o.geometry.attributes.position; for(let i=0;i<pos.count;i++){v.fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld); const d=BR+0.01-v.distanceTo(B); if(d>mx)mx=d;}});
+  return mx; }
 function attachedWrist(sd,t,B){ // 手のひらの面がボールの表面に来る手首の位置
   const q=wristQ(sd,Math.min(t,REL)), n=v3(0,0,1).applyQuaternion(q); // 放した後は手首の返しで手首の位置を動かさない
-  const palm=B.clone().sub(n.multiplyScalar(BR+0.003));
+  const palm=B.clone().sub(n.multiplyScalar(BR+0.012));
   return palm.sub(palmC[sd].position.clone().applyQuaternion(q));
 }
 function bodyPose(t,lean){
@@ -332,7 +340,20 @@ function bodyPose(t,lean){
   J_.neck.rotation.set(-(tp+ts+tc)*0.6*D,0,0); J_.head.rotation.set(0,0,0);
   fig.root.updateMatrixWorld(true);
 }
-// 条件：ボールを持っている間、腕が届かなければ腰を前へ運ぶ＝前の足への体重移動（量は全時間で求めてならす。最大15cm）
+// 条件1：ボールは胴の表面より外（めり込む分だけ胸の前方へ押し出す）
+function precomputeBallOffset(){
+  const N=Math.ceil(DUR*SMHZ)+1, raw=[];
+  for(let i=0;i<N;i++){const t=i/SMHZ; const off=v3(0,0,0);
+    if(t<REL+0.1){ bodyPose(t,LEAN?leanAt(t):0); const fw=v3(0,0,1).transformDirection(J_.chest.matrixWorld);
+      for(let it=0;it<8;it++){const pen=torsoPush(ballRaw(t).add(off)); if(pen<=0.001) break; off.add(fw.clone().multiplyScalar(pen*0.8));} }
+    raw.push([off.x,off.y,off.z]); }
+  const sig=6,K=[];for(let j=-18;j<=18;j++)K.push(Math.exp(-j*j/(2*sig*sig)));
+  // ならすと押し出しが足りなくなる所があるので、前後の最大値をとってからならす
+  const mxd=raw.map((_,i)=>{let m=raw[i].slice();for(let j=-10;j<=10;j++){const r=raw[Math.min(N-1,Math.max(0,i+j))];if(r[2]>m[2])m=r.slice();}return m;});
+  BOFF=mxd.map((_,i)=>{const a=[0,0,0];let ws=0;K.forEach((w,j)=>{const ii=Math.min(N-1,Math.max(0,i+j-18));for(let n=0;n<3;n++)a[n]+=mxd[ii][n]*w;ws+=w;});return a.map(v=>v/ws);});
+}
+precomputeBallOffset();
+// 条件2：ボールを持っている間、腕が届かなければ腰を前へ運ぶ＝前の足への体重移動（量は全時間で求めてならす。最大15cm）
 (function precomputeLean(){
   const N=Math.ceil(DUR*SMHZ)+1, raw=[];
   for(let i=0;i<N;i++){const t=i/SMHZ; let lean=0;
@@ -344,6 +365,7 @@ function bodyPose(t,lean){
   const sig=5,K=[];for(let j=-15;j<=15;j++)K.push(Math.exp(-j*j/(2*sig*sig)));
   LEAN=raw.map((_,i)=>{let a=0,ws=0;K.forEach((w,j)=>{const ii=Math.min(N-1,Math.max(0,i+j-15));a+=raw[ii][0]*w;ws+=w;});return a/ws;});
 })();
+precomputeBallOffset();
 function leanAt(t){const x=Math.min(LEAN.length-1.001,Math.max(0,t*SMHZ)),i=Math.floor(x),f=x-i;return LEAN[i]+(LEAN[i+1]-LEAN[i])*f;}
 // 放した後の手首の軌道（胸の座標→世界）を先に計算してならす
 const FREE={R:[],L:[]};
