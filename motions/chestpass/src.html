@@ -219,11 +219,13 @@ function attachedWrist(sd,t,B){ // 手のひらの面がボールの表面に来
   const palm=B.clone().sub(n.multiplyScalar(BR+0.012));
   return palm.sub(palmC[sd].position.clone().applyQuaternion(q));
 }
+function resetGirdle(){['R','L'].forEach(sd=>{J_['cl'+sd].rotation.set(0,0,0);J_['fr'+sd].quaternion.set(0,0,0,1);});}
 function bodyPose(t,lean){
+  resetGirdle();
   const [px,py,pz]=trk('pel',t), [tp,ts,tc]=trk('tor',t);
   body.quaternion.set(0,0,0,1); body.position.set(px,py-hipY,pz+lean);
   J_.pelvis.rotation.set(tp*D,0,0); J_.spine.rotation.set(ts*D,0,0); J_.chest.rotation.set(tc*D,0,0);
-  J_.neck.rotation.set(-(tp+ts+tc)*0.6*D,0,0); J_.head.rotation.set(0,0,0);
+  {const c=-(tp+ts+tc)*0.6, nk=Math.max(-28,c); J_.neck.rotation.set(nk*D,0,0); J_.head.rotation.set((c-nk)*D,0,0);} // 首で足りない分は頭で
   fig.root.updateMatrixWorld(true);
 }
 // 条件1：ボールは胴の表面より外（めり込む分だけ胸の前方へ押し出す）
@@ -272,21 +274,22 @@ function setPose(t){
     const [w,cp]=contact(cn,t); const heel=sd==='R'?trk('heelR',t)[0]*D:0;
     let target;
     const d=trk('legL',t), free=J_.pelvis.localToWorld(J_['hp'+sd].position.clone().add(v3(sx*d[0],d[1],d[2]).normalize().multiplyScalar(legLen)));
-    if(w>0){const g=v3(cp.x,FLOOR+ankleH+Math.sin(heel)*0.11,cp.z+0.11*(1-Math.cos(heel))); target=sd==='R'?g:free.lerp(g,w);} else target=free;
+    if(w>0){const g=v3(cp.x,FLOOR+ankleH+Math.sin(heel)*MQ.dims.ball,cp.z+MQ.dims.ball*(1-Math.cos(heel))); target=sd==='R'?g:free.lerp(g,w);} else target=free;
     let pole=v3(sx*0.1,0,1);
     if(w>0.001){const pl=v3(0,0.25,1).normalize().transformDirection(new THREE.Matrix4().copy(J_.pelvis.matrixWorld).invert()); pole=pole.lerp(pl,w).normalize();}
     solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(target),pole,T1,T2,1);
     fig.root.updateMatrixWorld(true);
     J_['an'+sd].quaternion.set(0,0,0,1);
     if(w>0.001){const fq=new THREE.Quaternion(); J_['an'+sd].getWorldQuaternion(fq); setWorldQuat(J_['an'+sd],fq.slerp(new THREE.Quaternion().setFromAxisAngle(v3(1,0,0),heel),w));}
+    MQ.toeFlat(sd,w);
   });
   // 腕：放すまでは手のひらをボールの表面に、放した後は自由な軌道へゆっくり移る
   const B=ballAt(t); let a=1; if(t>REL){const u=Math.min(1,(t-REL)/0.28); a=1-u*u*(3-2*u);}
   [['R',-1],['L',1]].forEach(([sd,sx])=>{
     const tgt=freeAt(sd,t).lerp(attachedWrist(sd,t,B),a);
-    solve2(J_['sh'+sd],J_['el'+sd],J_['sh'+sd].parent.worldToLocal(tgt),v3(sx*0.5,-1,-0.4),L1,L2,-1);
+    MQ.armIK(sd,tgt,v3(sx*0.5,-1,-0.4)); // 鎖骨（肩の付け根）の連動を含む
     fig.root.updateMatrixWorld(true);
-    setWorldQuat(J_['wr'+sd],wristQ(sd,t)); fingerShape(sd,t);
+    setWorldQuat(J_['wr'+sd],wristQ(sd,t)); MQ.distributeTwist(sd); fingerShape(sd,t);
   });
   fig.root.updateMatrixWorld(true);
   // 指：ボールに当たる指は、指先が表面に触れる所まで曲げを戻す
@@ -368,9 +371,9 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 // 検証用（tools/verify/check.js が使う）
-window.__motion={DUR,setPose:t=>setPose(t),J:J_,headMesh,armLen:L1+L2,legLen:T1+T2,
+window.__motion={rom:MQ.ROM,DUR,setPose:t=>setPose(t),J:J_,headMesh,armLen:L1+L2,legLen:T1+T2,
   contacts:[['footL','anL','hpL'],['footR','anR','hpR']].map(([c,j,s])=>({name:c,joint:j,root:s,reach:T1+T2,
-    at:t=>{const [w,cp]=contact(CON[c],t);if(!(w>0))return null;const h=c==='footR'?trk('heelR',t)[0]*D:0;return {w,x:cp.x,y:FLOOR+ankleH+Math.sin(h)*0.11,z:cp.z+0.11*(1-Math.cos(h))};}})),
+    at:t=>{const [w,cp]=contact(CON[c],t);if(!(w>0))return null;const h=c==='footR'?trk('heelR',t)[0]*D:0;return {w,x:cp.x,y:FLOOR+ankleH+Math.sin(h)*MQ.dims.ball,z:cp.z+MQ.dims.ball*(1-Math.cos(h))};}})),
   support:()=>[]};
 resize(); setT(0); requestAnimationFrame(frame);
 })();

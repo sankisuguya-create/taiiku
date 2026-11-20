@@ -26,6 +26,10 @@ const {chromium}=require('playwright'); const fs=require('fs'); const path=requi
         const flex=Math.atan2(d.z,-d.y)*R, knee=Math.acos(Math.max(-1,Math.min(1,d.dot(s))))*R;
         if(flex>130) rom.push(`${t.toFixed(2)}s ${sd}股関節の曲げ ${flex.toFixed(0)}°`);
         if(M.J['kn'+sd].rotation.x<-0.02) rom.push(`${t.toFixed(2)}s ${sd}ひざが逆に曲がる`);});}
+    // 可動域の表（ページが rom を公開していれば）：関節の局所回転（YXZ）が範囲内か
+    if(M.rom){ const E=new T.Euler(); for(let t=0;t<=M.DUR;t+=0.05){M.setPose(t);
+      Object.entries(M.rom).forEach(([n,r])=>{const j=M.J[n]; if(!j) return; E.setFromQuaternion(j.quaternion,'YXZ');
+        ['x','y','z'].forEach(ax=>{ if(!r[ax]) return; const v=E[ax]*R; if(v<r[ax][0]-1||v>r[ax][1]+1) rom.push(`${t.toFixed(2)}s ${n}.${ax} ${v.toFixed(0)}°（範囲 ${r[ax][0]}〜${r[ax][1]}）`);});});} }
     out['可動域の外れ']=rom.length?rom:'なし';
     // 4 頭と腕の重なり
     const hit=[]; for(let t=0;t<=M.DUR;t+=0.05){M.setPose(t);const hm=M.headMesh;hm.updateMatrixWorld(true);const inv=new T.Matrix4().copy(hm.matrixWorld).invert(),sc=hm.scale,AR=0.042;let mn=9;
