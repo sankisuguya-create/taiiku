@@ -1,0 +1,94 @@
+<title>人形の関節</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+/* 配置：上に舞台、その下に「いまの局面とこつ」、再生バー、局面ボタン、視点ボタン */
+:root{
+  --bg:#eef3f6; --fg:#1d2a33; --muted:#5b6b76; --panel:#ffffff; --line:#d3dde4;
+  --stage:#dfe8ee; --accent:#e0761c; --accent-fg:#ffffff;
+  --right:#1f4b99; --left:#9cc8f0; --joint:#e0761c; --skin:#e9c7a2; --shirt:#fbfcfd; --ball:#d9662b;
+  --font:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141b20; --fg:#e6edf2; --muted:#9aabb6; --panel:#1d262d; --line:#2f3c46;
+  --stage:#22303a; --accent:#f08a3a; --accent-fg:#141b20; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141b20; --fg:#e6edf2; --muted:#9aabb6; --panel:#1d262d; --line:#2f3c46;
+  --stage:#22303a; --accent:#f08a3a; --accent-fg:#141b20; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.25rem;margin:0}
+.stage{position:relative;width:100%;aspect-ratio:16/10;max-height:58vh;border-radius:12px;overflow:hidden;background:var(--stage);touch-action:none}
+.stage canvas{display:block;width:100%;height:100%}
+.phase{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-height:4.2em}
+.phase h2{margin:0 0 2px;font-size:1.15rem}
+.phase p{margin:0;font-size:1rem;line-height:1.6}
+.bar{display:flex;gap:8px;align-items:center}
+.bar input[type=range]{flex:1;min-width:0;height:48px;accent-color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.label{font-size:.8rem;color:var(--muted);width:100%;margin:0}
+button{font:inherit;font-weight:700;min-height:48px;padding:0 16px;border-radius:10px;border:2px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#play{min-width:96px}
+.note{font-size:.78rem;color:var(--muted);margin:0;line-height:1.6}
+</style>
+<div class="wrap">
+  <h1>人形の関節</h1>
+  <div class="stage" id="stage"></div>
+  <div class="phase"><h2 id="phName">気をつけ</h2><p id="phTip">背骨は3つ（腰・背中の下・背中の上）、肩は鎖骨から動く。</p></div>
+  <div class="row" id="poses"><p class="label">姿勢</p></div>
+  <div class="row" id="skins"><p class="label">見た目</p></div>
+  <p class="note">背骨を3つに分けたので、反る・丸めると背中がカーブする。胸を張る動きは「背中の上を反らす」＋「鎖骨で肩を後ろへ引く」の組み合わせ。</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const stage=document.getElementById('stage');
+const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5)); stage.appendChild(renderer.domElement);
+const scene=new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xffffff,0x8899aa,0.75));
+const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(2,4,3); scene.add(sun);
+const cam=new THREE.PerspectiveCamera(30,1.6,0.1,50);
+//@include lib/mannequin.js
+const MQ=buildMannequin(THREE,css); scene.add(MQ.root); const J_=MQ.J_;
+const floor=new THREE.Mesh(new THREE.CircleGeometry(1.2,40),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.06})); floor.rotation.x=-Math.PI/2; scene.add(floor);
+const D=Math.PI/180;
+const JN=Object.keys(J_);
+// 度。x:前後（胴は正で前へ曲げる、負で反る）、y:ひねり（鎖骨は肩を前後へ）、z:横（鎖骨は肩を上下へ）
+const POSES=[
+ {name:'気をつけ',tip:'背骨は3つ（腰・背中の下・背中の上）、肩は鎖骨から動く。',p:{shR:[0,0,-4],shL:[0,0,4]}},
+ {name:'胸を張る',tip:'背中の上を反らし、鎖骨で両肩を後ろへ引く。あごは軽く引く。',p:{spine:[-3,0,0],spine2:[-8,0,0],chest:[-12,0,0],neck:[12,0,0],head:[4,0,0],clR:[0,-22,0],clL:[0,22,0],shR:[12,0,-6],shL:[12,0,6]}},
+ {name:'背中を反る',tip:'腰・背中の下・背中の上が少しずつ反り、背中全体が弓のようにカーブする。',p:{spine:[-18,0,0],spine2:[-16,0,0],chest:[-12,0,0],neck:[-15,0,0],shR:[-165,0,-8],shL:[-165,0,8],clR:[0,0,-12],clL:[0,0,12]}},
+ {name:'背中を丸める',tip:'3つの背骨が前へ曲がり、鎖骨で肩が前へ出る。',p:{spine:[18,0,0],spine2:[18,0,0],chest:[14,0,0],neck:[10,0,0],clR:[0,16,0],clL:[0,-16,0],shR:[-20,0,0],shL:[-20,0,0],elR:[-20,0,0],elL:[-20,0,0]}},
+ {name:'肩をすくめる',tip:'鎖骨が上がって、肩だけが持ち上がる。腕の付け根の位置が変わる。',p:{clR:[0,0,-16],clL:[0,0,16],shR:[0,0,-4],shL:[0,0,4],neck:[-4,0,0]}},
+ {name:'体をひねる',tip:'腰・背中の下・背中の上がそれぞれ少しずつひねる。',p:{spine:[0,-12,0],spine2:[0,-14,0],chest:[0,-14,0],neck:[0,30,0],shR:[-30,0,-10],shL:[20,0,10],elR:[-60,0,0],elL:[-40,0,0]}},
+];
+const cur={},from={},to={}; JN.forEach(j=>cur[j]=[0,0,0]);
+let anim=null, dirty=true;
+function apply(){JN.forEach(j=>{const r=cur[j];J_[j].rotation.set(r[0]*D,r[1]*D,r[2]*D,'YXZ');});
+  MQ.body.position.y=0; MQ.root.updateMatrixWorld(true); const b=new THREE.Box3(); [J_.anR,J_.anL].forEach(a=>b.expandByObject(a)); MQ.body.position.y=-b.min.y; dirty=true;}
+const row=document.getElementById('poses');
+function go(i){JN.forEach(j=>{from[j]=cur[j].slice();to[j]=(POSES[i].p[j]||[0,0,0]).slice();});anim={t0:performance.now(),dur:700};
+  document.getElementById('phName').textContent=POSES[i].name; document.getElementById('phTip').textContent=POSES[i].tip;
+  [...row.querySelectorAll('button')].forEach((b,k)=>b.setAttribute('aria-pressed',String(k===i)));}
+POSES.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.name;b.id='pose'+i;b.onclick=()=>go(i);row.appendChild(b);});
+const skinRow=document.getElementById('skins');
+[['doll','なめらか'],['wire','針金（透けて奥が見える）']].forEach(([k,n],i)=>{const b=document.createElement('button');b.textContent=n;b.id='skin-'+k;
+  b.setAttribute('aria-pressed',String(i===0));b.onclick=()=>{MQ.setSkin(k);[...skinRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));dirty=true;};skinRow.appendChild(b);});
+let az=0.9, el=0.12, drag=null;
+stage.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};stage.setPointerCapture(e.pointerId);});
+stage.addEventListener('pointermove',e=>{if(!drag)return;az-=(e.clientX-drag.x)*0.01;el=Math.max(-0.1,Math.min(1.3,el+(e.clientY-drag.y)*0.006));drag={x:e.clientX,y:e.clientY};dirty=true;});
+['pointerup','pointercancel'].forEach(ev=>stage.addEventListener(ev,()=>drag=null));
+let W=0,Hh=0; function resize(){W=stage.clientWidth;Hh=stage.clientHeight;renderer.setSize(W,Hh,false);dirty=true;}
+new ResizeObserver(resize).observe(stage); matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>dirty=true);
+const ease=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+function frame(now){
+  if(anim){const k=Math.min(1,(now-anim.t0)/anim.dur),e=ease(k);JN.forEach(j=>{for(let a=0;a<3;a++)cur[j][a]=from[j][a]+(to[j][a]-from[j][a])*e;});apply();if(k>=1)anim=null;}
+  if(dirty&&W){dirty=false;const dist=+(window.__dist||3.4),cy=0.85;cam.aspect=W/Hh;cam.position.set(Math.sin(az)*Math.cos(el)*dist,cy+Math.sin(el)*dist,Math.cos(az)*Math.cos(el)*dist);
+    cam.lookAt(0,cy,0);cam.updateProjectionMatrix();renderer.setClearColor(new THREE.Color(css('--stage')));renderer.render(scene,cam);}
+  requestAnimationFrame(frame);}
+resize(); apply(); go(0); requestAnimationFrame(frame);
+})();
+</script>
