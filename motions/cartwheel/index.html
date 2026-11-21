@@ -149,7 +149,18 @@ function buildMannequin(THREE, css){
   mesh(new THREE.CylinderGeometry(G(.022),G(.026),neckLen,14),'S',J_.neck,0,neckLen/2);
   joint(J_.neck,G(.016));
   const headMesh=ell(J_.head,hh*0.37,hh*0.5,hh*0.43,hh*0.5,'S');
-  const nose=mesh(new THREE.ConeGeometry(hh*0.045,hh*0.1,10),'S',J_.head,0,hh*0.45,hh*0.45); nose.rotation.x=Math.PI/2;
+  const nose=mesh(new THREE.ConeGeometry(hh*0.045,hh*0.1,10),'P',J_.head,0,hh*0.45,hh*0.45); nose.rotation.x=Math.PI/2;
+  { // 顔の正面の太字Tの肌色（目・鼻・口がある所）。頭の面に貼った絵
+    const c=document.createElement('canvas'); c.width=256; c.height=256; const x=c.getContext('2d');
+    x.fillStyle='#e8c4a0'; const r=18;
+    const rr=(X,Y,W,H)=>{x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+W,Y,X+W,Y+H,r);x.arcTo(X+W,Y+H,X,Y+H,r);x.arcTo(X,Y+H,X,Y,r);x.arcTo(X,Y,X+W,Y,r);x.fill();};
+    rr(28,40,200,62);   // 横の太い棒（両目の高さ）
+    rr(90,40,76,190);   // 縦の太い棒（鼻から口まで）
+    const tex=new THREE.CanvasTexture(c);
+    const g=new THREE.SphereGeometry(1.012,32,20,Math.PI/2-0.75,1.5,Math.PI*0.3,Math.PI*0.42);
+    const face=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
+    face.scale.copy(headMesh.scale); face.position.copy(headMesh.position); face.userData.fixed=true; J_.head.add(face);
+  }
   [-1,1].forEach(x=>mesh(new THREE.SphereGeometry(hh*0.035,8,6),'A',J_.head,x*hh*0.14,hh*0.56,hh*0.39,{wireOnly:true}));
   // ---- 手足 ----
   const handC={}, palmC={}, fingers={R:[],L:[]};
