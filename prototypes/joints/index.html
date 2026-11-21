@@ -122,15 +122,21 @@ function buildMannequin(THREE, css){
   const frontZ=G(.097)*DEP*0.985;
   mesh(new THREE.CircleGeometry(G(.03),24),'O',J_.chest,0,chestH*0.55,frontZ);
   const tri=mesh(new THREE.CircleGeometry(G(.022),3),'O',J_.chest,0,chestH*0.8,frontZ*0.985); tri.rotation.z=Math.PI/2;
-  // 背中の印：肩甲骨のマーク（後ろから見て、左肩甲骨＝「」」、右肩甲骨＝その左右反転。内側の縦線＋下の横線、灰色）
-  // 腕を上げると少し下がり、下の角が外へ回る（applyRhythm で動かす）
-  const backZ=-(G(.096)*DEP+0.003), scap={};
+  // 背中の印：肩甲骨のマーク。背中の面に貼った絵（左肩甲骨＝後ろから見て「」」、右肩甲骨＝その左右反転。内側の縦線＋下の横線、灰色）
+  // 胸の回転体と同じ形の薄い面（左右に分けて）に描く。腕を上げると絵が少し下がり、下の角が外へ回る（applyRhythm）
+  const scap={};
   [['L',1],['R',-1]].forEach(([sd,sx])=>{ // sx=1：人形の左（+X）
-    const xin=sx*G(.022), w=G(.05), t=G(.009), y0=chestH*0.28, y1=chestH*0.66;
-    const grp=new THREE.Group(); grp.position.set(xin,y0,backZ); J_.chest.add(grp); grp.userData.y0=y0;
-    mesh(new THREE.BoxGeometry(t,y1-y0,0.004),'G',grp,0,(y1-y0)/2,0);
-    mesh(new THREE.BoxGeometry(w,t,0.004),'G',grp,sx*w/2,0,0);
-    scap[sd]=grp;
+    const c=document.createElement('canvas'); c.width=128; c.height=256; const x=c.getContext('2d');
+    // u：左は外側→背骨、右は背骨→外側。縦線は背骨寄り、横線は下で外へ
+    const uIn=sx>0?0.82:0.18, uOut=sx>0?0.30:0.70, vTop=0.80, vBot=0.30, lw=10;
+    x.strokeStyle='#7d8894'; x.lineWidth=lw; x.lineCap='round'; x.beginPath();
+    x.moveTo(uIn*128,(1-vTop)*256); x.lineTo(uIn*128,(1-vBot)*256); x.lineTo(uOut*128,(1-vBot)*256); x.stroke();
+    const tex=new THREE.CanvasTexture(c); tex.center.set(uIn,vBot);
+    const pts=[[chestH*.12,.0855],[chestH*.45,.097],[chestH*.78,.0955]].map(([y,r])=>new THREE.Vector2(G(r)*1.03,y));
+    const phi0=sx>0?Math.PI/2+0.35:Math.PI, phiL=Math.PI/2-0.35;      // phi=π が背中の中央
+    const patch=new THREE.Mesh(new THREE.LatheGeometry(pts,16,phi0,phiL),new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
+    patch.scale.z=DEP; patch.userData.fixed=true; J_.chest.add(patch);   // 見た目の切り替えで材質を変えない
+    scap[sd]=tex;
   });
   // 首・頭（鼻で向きを示す）
   mesh(new THREE.CylinderGeometry(G(.022),G(.026),neckLen,14),'S',J_.neck,0,neckLen/2);
@@ -183,7 +189,7 @@ function buildMannequin(THREE, css){
     joint(to,G(.012)).position.y=L(R.ankle)*0.4;
   });
   // 指の部品にも役割を付ける（fsegで作った分）
-  root.traverse(o=>{if(o.isMesh&&!o.userData.role){o.userData.role='S';allMeshes.push(o);}});
+  root.traverse(o=>{if(o.isMesh&&!o.userData.role&&!o.userData.fixed){o.userData.role='S';allMeshes.push(o);}});
   function setSkin(kind){
     const sk=SKIN[kind]||SKIN.doll;
     allMeshes.forEach(o=>{o.material=sk[o.userData.role]; o.visible=o.userData.wireOnly?kind==='wire':(o.userData.dollOnly?kind!=='wire':true);
@@ -235,7 +241,7 @@ function buildMannequin(THREE, css){
     const sx=sd==='R'?-1:1, r=ROM['cl'+sd];
     const c=(x,[a,b])=>Math.max(a,Math.min(b,x));
     J_['cl'+sd].rotation.set(0,c(-sx*back,r.y)*D,c(sx*up,r.z)*D,'YXZ');
-    const k=up/28, g=scap[sd]; g.position.y=g.userData.y0-0.03*k; g.rotation.z=-sx*k*18*D;   // 肩甲骨のマーク：少し下がり、下の角が外へ
+    const k=up/28, tx=scap[sd]; tx.offset.set(0,0.12*k); tx.rotation=sx*k*18*D;   // 肩甲骨のマーク：絵を少し下げ、下の角を外へ回す
   }
   // 腕を世界の座標の目標へ（鎖骨の連動を含めて2回解く）。pole は鎖骨の座標での曲がる向き
   function armIK(sd,target,pole){
