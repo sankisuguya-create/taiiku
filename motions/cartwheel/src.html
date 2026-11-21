@@ -185,7 +185,7 @@ function smoothTrack(name){
 Object.keys(TR).forEach(smoothTrack);
 function trk(name,t){const a=SM[name], x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)), i=Math.floor(x), f=x-i;
   return a[i].map((v,n)=>v+(a[i+1][n]-v)*f);}
-const HAND_DOWN={R:quatFrom(v3(0,0,1),v3(0,-1,0)),L:quatFrom(v3(0,0,1),v3(0,-1,0))}; // 手のひらを床に、指はカメラ側
+const HAND_DOWN={R:quatFrom(v3(0,0,-1),v3(0,-1,0)),L:quatFrom(v3(0,0,-1),v3(0,-1,0))}; // 手のひらを床に、指は背中の側（逆さまでは指が背中の向く方向を指す。壁倒立で背中が壁に付くのと同じ）
 function fingerSet(sd,flat){ // flat=1で床にぴったり開く
   const curl=(1-flat)*15*D, spread=(8+flat*8)*D;
   fingers[sd].forEach(f=>{f.base.rotation.set(-curl,0,f.spread*spread*0.6); f.j2.rotation.set(-curl*1.1,0,0);});

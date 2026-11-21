@@ -129,6 +129,13 @@ function buildMannequin(THREE, css){
   const frontZ=G(.097)*DEP*0.985;
   mesh(new THREE.CircleGeometry(G(.03),24),'O',J_.chest,0,chestH*0.55,frontZ);
   const tri=mesh(new THREE.CircleGeometry(G(.022),3),'O',J_.chest,0,chestH*0.8,frontZ*0.985); tri.rotation.z=Math.PI/2;
+  // 背中の印：肩甲骨のマーク（後ろから見て、左肩甲骨＝「」」、右肩甲骨＝その左右反転）。内側の縦線＋下の横線
+  const backZ=-(G(.096)*DEP+0.003);
+  [[1],[-1]].forEach(([sx])=>{ // sx=1：人形の左（+X）
+    const xin=sx*G(.022), w=G(.05), t=G(.009), y0=chestH*0.45, y1=chestH*0.85;
+    const vert=mesh(new THREE.BoxGeometry(t,y1-y0,0.004),'O',J_.chest,xin,(y0+y1)/2,backZ);
+    const horz=mesh(new THREE.BoxGeometry(w,t,0.004),'O',J_.chest,xin+sx*w/2,y0,backZ);
+  });
   // 首・頭（鼻で向きを示す）
   mesh(new THREE.CylinderGeometry(G(.022),G(.026),neckLen,14),'S',J_.neck,0,neckLen/2);
   joint(J_.neck,G(.016));
@@ -451,7 +458,7 @@ function smoothTrack(name){
 Object.keys(TR).forEach(smoothTrack);
 function trk(name,t){const a=SM[name], x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)), i=Math.floor(x), f=x-i;
   return a[i].map((v,n)=>v+(a[i+1][n]-v)*f);}
-const HAND_DOWN={R:quatFrom(v3(0,0,1),v3(0,-1,0)),L:quatFrom(v3(0,0,1),v3(0,-1,0))}; // 手のひらを床に、指はカメラ側
+const HAND_DOWN={R:quatFrom(v3(0,0,-1),v3(0,-1,0)),L:quatFrom(v3(0,0,-1),v3(0,-1,0))}; // 手のひらを床に、指は背中の側（逆さまでは指が背中の向く方向を指す。壁倒立で背中が壁に付くのと同じ）
 function fingerSet(sd,flat){ // flat=1で床にぴったり開く
   const curl=(1-flat)*15*D, spread=(8+flat*8)*D;
   fingers[sd].forEach(f=>{f.base.rotation.set(-curl,0,f.spread*spread*0.6); f.j2.rotation.set(-curl*1.1,0,0);});
