@@ -83,8 +83,8 @@ function buildMannequin(THREE, css){
   const solid=c=>new THREE.MeshBasicMaterial({color:c});
   const SKIN={
     doll:{R:lam('#4f6f9a'),L:lam('#dce5ee'),T:lam('#c9d1da'),S:lam('#d4dbe2'),J:lam('#aeb8c3'),A:lam('#4a545e'),O:lam(css('--joint')||'#e0761c'),
-          BR:lam('#243f66'),BL:lam('#8fa6bf'),BS:lam('#8e9aa7')},   // B*＝腕の裏側（二の腕の後ろ・前腕と手の甲側）
-    wire:{R:wir('#1f4b99'),L:wir('#5fa8e6'),T:wir('#55636e'),S:wir('#55636e'),J:solid('#e0761c'),A:solid('#22303a'),O:solid('#e0761c'),BR:wir('#1f4b99'),BL:wir('#5fa8e6'),BS:wir('#55636e')},
+          BR:lam('#243f66'),BL:lam('#8fa6bf'),BS:lam('#8e9aa7'),G:lam('#7d8894')},   // B*＝腕の裏側（二の腕の後ろ・前腕と手の甲側）
+    wire:{R:wir('#1f4b99'),L:wir('#5fa8e6'),T:wir('#55636e'),S:wir('#55636e'),J:solid('#e0761c'),A:solid('#22303a'),O:solid('#e0761c'),BR:wir('#1f4b99'),BL:wir('#5fa8e6'),BS:wir('#55636e'),G:solid('#7d8894')},
   };
   const root=new THREE.Group(), body=new THREE.Group(); root.add(body);
   const J_={}, allMeshes=[];
@@ -129,12 +129,15 @@ function buildMannequin(THREE, css){
   const frontZ=G(.097)*DEP*0.985;
   mesh(new THREE.CircleGeometry(G(.03),24),'O',J_.chest,0,chestH*0.55,frontZ);
   const tri=mesh(new THREE.CircleGeometry(G(.022),3),'O',J_.chest,0,chestH*0.8,frontZ*0.985); tri.rotation.z=Math.PI/2;
-  // 背中の印：肩甲骨のマーク（後ろから見て、左肩甲骨＝「」」、右肩甲骨＝その左右反転）。内側の縦線＋下の横線
-  const backZ=-(G(.096)*DEP+0.003);
-  [[1],[-1]].forEach(([sx])=>{ // sx=1：人形の左（+X）
-    const xin=sx*G(.022), w=G(.05), t=G(.009), y0=chestH*0.45, y1=chestH*0.85;
-    const vert=mesh(new THREE.BoxGeometry(t,y1-y0,0.004),'O',J_.chest,xin,(y0+y1)/2,backZ);
-    const horz=mesh(new THREE.BoxGeometry(w,t,0.004),'O',J_.chest,xin+sx*w/2,y0,backZ);
+  // 背中の印：肩甲骨のマーク（後ろから見て、左肩甲骨＝「」」、右肩甲骨＝その左右反転。内側の縦線＋下の横線、灰色）
+  // 腕を上げると少し下がり、下の角が外へ回る（applyRhythm で動かす）
+  const backZ=-(G(.096)*DEP+0.003), scap={};
+  [['L',1],['R',-1]].forEach(([sd,sx])=>{ // sx=1：人形の左（+X）
+    const xin=sx*G(.022), w=G(.05), t=G(.009), y0=chestH*0.28, y1=chestH*0.66;
+    const grp=new THREE.Group(); grp.position.set(xin,y0,backZ); J_.chest.add(grp); grp.userData.y0=y0;
+    mesh(new THREE.BoxGeometry(t,y1-y0,0.004),'G',grp,0,(y1-y0)/2,0);
+    mesh(new THREE.BoxGeometry(w,t,0.004),'G',grp,sx*w/2,0,0);
+    scap[sd]=grp;
   });
   // 首・頭（鼻で向きを示す）
   mesh(new THREE.CylinderGeometry(G(.022),G(.026),neckLen,14),'S',J_.neck,0,neckLen/2);
@@ -239,6 +242,7 @@ function buildMannequin(THREE, css){
     const sx=sd==='R'?-1:1, r=ROM['cl'+sd];
     const c=(x,[a,b])=>Math.max(a,Math.min(b,x));
     J_['cl'+sd].rotation.set(0,c(-sx*back,r.y)*D,c(sx*up,r.z)*D,'YXZ');
+    const k=up/28, g=scap[sd]; g.position.y=g.userData.y0-0.03*k; g.rotation.z=-sx*k*18*D;   // 肩甲骨のマーク：少し下がり、下の角が外へ
   }
   // 腕を世界の座標の目標へ（鎖骨の連動を含めて2回解く）。pole は鎖骨の座標での曲がる向き
   function armIK(sd,target,pole){
