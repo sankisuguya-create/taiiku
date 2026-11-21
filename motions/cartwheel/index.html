@@ -312,7 +312,13 @@ function buildMannequin(THREE, css){
   let wireOn=false; const _setSkin=setSkin;
   function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); }
   const dims={L1:ARM1,L2:ARM2,T1:hipY-L(R.knee),T2:L(R.knee-R.ankle),hipY,chestH,ankleH:hipY-(hipY-L(R.knee))-L(R.knee-R.ankle),ball:L(R.footL)*0.55,footH:L(R.ankle)};
-  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
+  // 腕・脚が体の中心線を越えて交差しないように、目標点を自分の側へ寄せる（世界の座標で受けて返す）
+  function noCross(sd,target,kind){
+    const sx=sd==='R'?-1:1, ref=kind==='leg'?J_.pelvis:J_.chest, min=kind==='leg'?L(R.hipJW/2)*0.5:G(.03);
+    root.updateMatrixWorld(true); const p=ref.worldToLocal(target.clone());
+    if(p.x*sx<min) p.x=sx*min; return ref.localToWorld(p);
+  }
+  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,noCross,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
 }
 
 // 体育館（本人の目線で、どちらを向いているか分かる目印つき）。opts.center:[x,z] 中心、opts.yaw 向き、opts.target:[x,z] 相手の位置（体育館の中の座標）
@@ -595,7 +601,7 @@ function setPose(t){
       if(w>0.001){const fh=v3(0,0,1).applyAxisAngle(v3(0,1,0),trk('ori',t)[0]*D); fh.y=0.25; fh.normalize();
         const pl=fh.transformDirection(new THREE.Matrix4().copy(J_.pelvis.matrixWorld).invert());
         pole=pole.clone().lerp(pl,w).normalize();}
-      solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(v3(x,y,z)),pole,T1,T2,1);
+      solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'leg')),pole,T1,T2,1);
       fig.root.updateMatrixWorld(true);
       J_['an'+sd].quaternion.set(0,0,0,1);
       if(w>0.001){const pf=v3(0,0,1).transformDirection(J_.pelvis.matrixWorld); pf.y=0; if(pf.lengthSq()<1e-4)pf.set(0,0,1); pf.normalize();
@@ -603,7 +609,7 @@ function setPose(t){
         const fq=new THREE.Quaternion(); J_['an'+sd].getWorldQuaternion(fq); setWorldQuat(J_['an'+sd],fq.slerp(qf,w));}
       MQ.toeFlat(sd,w);
     } else {
-      const tgt=v3(x,y,z);
+      const tgt=w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'arm');
       MQ.armIK(sd,tgt,v3(sx*1,0,-0.3)); // 鎖骨（肩の付け根）の連動を含む
       fig.root.updateMatrixWorld(true);
       J_['wr'+sd].quaternion.set(0,0,0,1);

@@ -312,7 +312,13 @@ function buildMannequin(THREE, css){
   let wireOn=false; const _setSkin=setSkin;
   function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); }
   const dims={L1:ARM1,L2:ARM2,T1:hipY-L(R.knee),T2:L(R.knee-R.ankle),hipY,chestH,ankleH:hipY-(hipY-L(R.knee))-L(R.knee-R.ankle),ball:L(R.footL)*0.55,footH:L(R.ankle)};
-  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
+  // 腕・脚が体の中心線を越えて交差しないように、目標点を自分の側へ寄せる（世界の座標で受けて返す）
+  function noCross(sd,target,kind){
+    const sx=sd==='R'?-1:1, ref=kind==='leg'?J_.pelvis:J_.chest, min=kind==='leg'?L(R.hipJW/2)*0.5:G(.03);
+    root.updateMatrixWorld(true); const p=ref.worldToLocal(target.clone());
+    if(p.x*sx<min) p.x=sx*min; return ref.localToWorld(p);
+  }
+  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,noCross,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
 }
 
 // 体育館（本人の目線で、どちらを向いているか分かる目印つき）。opts.center:[x,z] 中心、opts.yaw 向き、opts.target:[x,z] 相手の位置（体育館の中の座標）

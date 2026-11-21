@@ -305,7 +305,7 @@ function setPose(t){
       if(w>0.001){const fh=v3(0,0,1).applyAxisAngle(v3(0,1,0),trk('ori',t)[0]*D); fh.y=0.25; fh.normalize();
         const pl=fh.transformDirection(new THREE.Matrix4().copy(J_.pelvis.matrixWorld).invert());
         pole=pole.clone().lerp(pl,w).normalize();}
-      solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(v3(x,y,z)),pole,T1,T2,1);
+      solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'leg')),pole,T1,T2,1);
       fig.root.updateMatrixWorld(true);
       J_['an'+sd].quaternion.set(0,0,0,1);
       if(w>0.001){const pf=v3(0,0,1).transformDirection(J_.pelvis.matrixWorld); pf.y=0; if(pf.lengthSq()<1e-4)pf.set(0,0,1); pf.normalize();
@@ -313,7 +313,7 @@ function setPose(t){
         const fq=new THREE.Quaternion(); J_['an'+sd].getWorldQuaternion(fq); setWorldQuat(J_['an'+sd],fq.slerp(qf,w));}
       MQ.toeFlat(sd,w);
     } else {
-      const tgt=v3(x,y,z);
+      const tgt=w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'arm');
       MQ.armIK(sd,tgt,v3(sx*1,0,-0.3)); // 鎖骨（肩の付け根）の連動を含む
       fig.root.updateMatrixWorld(true);
       J_['wr'+sd].quaternion.set(0,0,0,1);

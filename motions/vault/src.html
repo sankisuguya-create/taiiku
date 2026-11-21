@@ -76,10 +76,26 @@ const bodyShadow=new THREE.Mesh(new THREE.CircleGeometry(0.32,28),shadowM()); bo
 // 跳び箱（5段相当）・踏み切り板・着地マット
 const BOX_H=0.85;
 const box=new THREE.Group(); scene.add(box);
-{const n=5, wood=M('#c8955a'), top=M('#f2efe6');
- for(let i=0;i<n;i++){const h=BOX_H/n, w0=0.8+0.08*(n-1-i)*0.5, d0=0.42+0.06*(n-1-i)*0.5;
-   const seg=new THREE.Mesh(new THREE.BoxGeometry(w0,h*0.96,d0),i===n-1?top:wood); seg.position.set(0.4,h*(i+0.5),0); box.add(seg);}
- const board=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.03,0.5),M('#2f3e55')); board.position.set(-0.65,0.075,0); board.rotation.z=-Math.atan2(0.1,0.6); box.add(board);
+{const wood=M('#c8955a'), top=M('#f2efe6'), line=new THREE.MeshBasicMaterial({color:0x8a5a2b});
+ // 台形（下が広い）の一体の跳び箱。段の境目は線で示す
+ const tw=0.8, td=0.40, bw=1.0, bd=0.62, hb=BOX_H-0.12;
+ const frus=new THREE.Mesh(new THREE.CylinderGeometry(Math.SQRT1_2,Math.SQRT1_2*1,1,4,1),wood);
+ const g=frus.geometry; const pos=g.attributes.position; // 上下で幅を変える
+ for(let i=0;i<pos.count;i++){const y=pos.getY(i); const k=y>0?1:0; pos.setX(i,pos.getX(i)*(k?tw:bw)); pos.setZ(i,pos.getZ(i)*(k?td:bd));}
+ g.rotateY(0); g.computeVertexNormals();
+ frus.rotation.y=Math.PI/4; frus.scale.set(1,hb,1); frus.position.set(0.4,hb/2,0);
+ // 回転で幅が崩れないよう、頂点を直接つくる方が確実なので作り直す
+ const v=(x,y,z)=>new THREE.Vector3(x,y,z);
+ const B=[v(-bw/2,0,-bd/2),v(bw/2,0,-bd/2),v(bw/2,0,bd/2),v(-bw/2,0,bd/2)], T=[v(-tw/2,hb,-td/2),v(tw/2,hb,-td/2),v(tw/2,hb,td/2),v(-tw/2,hb,td/2)];
+ const geo=new THREE.BufferGeometry(); const arr=[];
+ const quad=(a,b,c,d)=>{[a,b,c,a,c,d].forEach(p=>arr.push(p.x,p.y,p.z));};
+ for(let i=0;i<4;i++){const j=(i+1)%4; quad(B[i],B[j],T[j],T[i]);}
+ geo.setAttribute('position',new THREE.Float32BufferAttribute(arr,3)); geo.computeVertexNormals();
+ const body3=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0xc8955a,side:THREE.DoubleSide})); body3.position.set(0.4,0,0); box.add(body3);
+ const cap=new THREE.Mesh(new THREE.BoxGeometry(tw,0.12,td),top); cap.position.set(0.4,hb+0.06,0); box.add(cap);
+ for(let i=1;i<4;i++){const y=hb*i/4, f=y/hb, w=bw+(tw-bw)*f, d=bd+(td-bd)*f;
+   [[0,d/2+0.002,w],[0,-d/2-0.002,w]].forEach(([_,z,ww])=>{const l=new THREE.Mesh(new THREE.BoxGeometry(ww,0.008,0.004),line); l.position.set(0.4,y,z); box.add(l);});}
+const board=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.03,0.5),M('#2f3e55')); board.position.set(-0.65,0.075,0); board.rotation.z=-Math.atan2(0.1,0.6); box.add(board);
  const bb=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.12,0.5),M('#2f3e55')); bb.position.set(-0.39,0.06,0); box.add(bb);
  const lm=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.04,1.0),M('#5b6f8a')); lm.position.set(1.8,0.02,0); box.add(lm);}
 const lineM=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.004,0.025),new THREE.MeshBasicMaterial({color:0xffffff})); lineM.position.set(1.25,0.022,0); scene.add(lineM);
@@ -131,8 +147,8 @@ const RUN={
  legR:[[0,[0,-1,.1]],[.2,[0,-.85,.5,.85]],[.4,[0,-.95,.25]],[.5,[0,-1,0]],[.62,[0,-1,0]]],
  armL:[[0,[.2,-.5,.15]],[.25,[.2,-.45,-.15]],[.38,[.2,-.5,.15]],[.52,[.2,-.45,-.28]],[.66,[.2,.2,.45]]],
  armR:[[0,[.2,-.45,-.15]],[.25,[.2,-.5,.15]],[.38,[.2,-.45,-.15]],[.52,[.2,-.45,-.28]],[.66,[.2,.2,.45]]],
- footL:[[.24,.36,P3(-1.42,0,.09)],[.50,.68,P3(-0.60,.12,.09)]],
- footR:[[-1,.14,P3(-2.0,0,-.09)],[.50,.68,P3(-0.62,.12,-.09)]],
+ footL:[[.24,.36,P3(-1.42,0,-.09)],[.50,.68,P3(-0.60,.12,-.09)]],
+ footR:[[-1,.14,P3(-2.0,0,.09)],[.50,.68,P3(-0.62,.12,.09)]],  // 進む方向(+X)を向くと左は −Z
 };
 const TECHS={
  kaikyaku:{name:'開脚跳び', straightArms:true, dur:2.6,
@@ -177,8 +193,8 @@ function loadTechData(key){
   TR={pel:RUN.pel.concat(T.pel), ori:RUN.ori.concat(T.ori), bend:T.bend, pelK:[[0,[1]],[T.dur,[1]]],
       legL:L4(RUN.legL.concat(T.legL)), legR:L4(RUN.legR.concat(T.legL)), armL:RUN.armL.concat(T.armL), armR:RUN.armR.concat(T.armL)};
   const [h0,h1,hx]=T.hand, [l0,lx]=T.land;
-  CON={handL:{on:[[h0,h1,P3(hx,BOX_H,.15)]]}, handR:{on:[[h0,h1,P3(hx,BOX_H,-.15)]]},
-       footL:{on:RUN.footL.concat([[l0,99,P3(lx,0,.13)]])}, footR:{on:RUN.footR.concat([[l0,99,P3(lx,0,-.13)]])}};
+  CON={handL:{on:[[h0,h1,P3(hx,BOX_H,-.15)]]}, handR:{on:[[h0,h1,P3(hx,BOX_H,.15)]]},
+       footL:{on:RUN.footL.concat([[l0,99,P3(lx,0,-.13)]])}, footR:{on:RUN.footR.concat([[l0,99,P3(lx,0,.13)]])}};
   PHASES=T.phases.map(([t,name,tip])=>({t,name,tip}));
   DUR=T.dur;
 }
@@ -347,7 +363,7 @@ function setPose(t){
       if(w>0.001){const fh=v3(0,0,1).applyAxisAngle(v3(0,1,0),trk('ori',t)[0]*D); fh.y=0.25; fh.normalize();
         const pl=fh.transformDirection(new THREE.Matrix4().copy(J_.pelvis.matrixWorld).invert());
         pole=pole.clone().lerp(pl,w).normalize();}
-      solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(v3(x,y,z)),pole,T1,T2,1);
+      solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'leg')),pole,T1,T2,1);
       fig.root.updateMatrixWorld(true);
       J_['an'+sd].quaternion.set(0,0,0,1);
       if(w>0.001){const pf=v3(0,0,1).transformDirection(J_.pelvis.matrixWorld); pf.y=0; if(pf.lengthSq()<1e-4)pf.set(0,0,1); pf.normalize();
@@ -355,7 +371,7 @@ function setPose(t){
         const fq=new THREE.Quaternion(); J_['an'+sd].getWorldQuaternion(fq); setWorldQuat(J_['an'+sd],fq.slerp(qf,w));}
       MQ.toeFlat(sd,w);
     } else {
-      const tgt=v3(x,y,z);
+      const tgt=w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'arm');
       MQ.armIK(sd,tgt,v3(sx*1,0,-0.3)); // 鎖骨（肩の付け根）の連動を含む
       fig.root.updateMatrixWorld(true);
       J_['wr'+sd].quaternion.set(0,0,0,1);
