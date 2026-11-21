@@ -339,7 +339,9 @@ const v3=(x,y,z)=>new THREE.Vector3(x,y,z);
 const shadowM=()=>new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.15});
 const bodyShadow=new THREE.Mesh(new THREE.CircleGeometry(0.32,28),shadowM()); bodyShadow.rotation.x=-Math.PI/2; scene.add(bodyShadow);
 // マットと「1本の直線」（手と足を置く線）
-const mat=new THREE.Mesh(new THREE.BoxGeometry(3.6,0.02,0.9),M('#d9534f')); mat.position.set(1.25,0.01,0); scene.add(mat);
+// 白い線の左右で色を変える（進む方向＝「前」を向いて、右側＝赤、左側＝青）
+const mat=new THREE.Group(); scene.add(mat);
+[[0.225,'#d9534f'],[-0.225,'#3f7fc4']].forEach(([z,c])=>{const h=new THREE.Mesh(new THREE.BoxGeometry(3.6,0.02,0.45),M(c)); h.position.set(1.25,0.01,z); mat.add(h);});
 const lineM=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.004,0.025),new THREE.MeshBasicMaterial({color:0xffffff})); lineM.position.set(1.25,0.022,0); scene.add(lineM);
 floor.position.x=1.25;
 // 寸法
