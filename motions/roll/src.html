@@ -120,6 +120,8 @@ const FLOOR=0;
 // 位置：進む方向＝+X。踏み切り板 x=-0.95〜-0.35（上面 0.12）、跳び箱 x=0〜0.8（上面 BOX_H）、着地マット x=1.0〜2.6
 const P3=(x,y,z)=>v3(x,y,z);
 // 助走の最後の2歩と両足踏み切り（3つの技で共通）
+// 前転の姿勢（三角座りから）：太もも・ひざを腹と胸につけ、頭をうつむかせ、足首を伸ばしてつま先を伸ばす
+const TUCK={leg:[.05,.42,.9,.56], bend:[30,28,40], arm:[0.06,-0.2,0.62]}; // 手はすねの前で組む（ひじは外へ）
 const TECHS={
  sit:{name:'体育座り', straightArms:false, dur:2.6,
   pel:[[0,[0.2,0.80,0]],[.4,[0.2,0.80,0]],[1.0,[0.08,0.48,0]],[1.5,[-0.1,0.15,0]],[1.8,[-0.14,0.13,0]],[2.6,[-0.14,0.13,0]]],
@@ -129,14 +131,22 @@ const TECHS={
   armL:[[0,[.22,-.5,.1]],[.5,[.24,-.4,.2]],[.85,[.32,-.05,.5]],[1.3,[.34,-.1,.5]],[1.65,[.2,-.25,.44]],[2.0,[.14,-.3,.42]],[2.6,[.14,-.3,.42]]],
   feet:[[-1,99,.26]], footW:.06, kneeIn:true, hands:null, gaze:[[0,0],[2.6,0]],
   phases:[[0,'立つ','気をつけの姿勢。'],[.5,'しゃがむ','ひざを曲げて腰を下ろす。'],[1.3,'座る','おしりをマットにつける。'],[1.8,'体育座り','ひざを立てて胸に近づけ、両腕でひざをかかえる。背中は少し丸く。']]},
+ tuck:{name:'前転の姿勢', straightArms:false, dur:2.4,
+  pel:[[0,[-0.14,0.13,0]],[.4,[-0.14,0.13,0]],[1.0,[-0.06,0.13,0]],[2.4,[-0.06,0.13,0]]],
+  ori:[[0,[90,-28,0]],[.4,[90,-28,0]],[1.2,[90,-38,0]],[2.4,[90,-38,0]]],
+  bend:[[0,[12,8,6]],[.4,[12,8,6]],[1.2,TUCK.bend],[2.4,TUCK.bend]],
+  legL:[[0,[.03,-.55,.83,.62]],[2.4,[.03,-.55,.83,.62]]], legFK:[[0,[80,115,2]],[.5,[90,118,2]],[.7,[102,126,1]],[1.0,[118,142,1]],[1.2,[122,145,1]],[2.4,[122,145,1]]], armPole:[1,0,0.8], sepOff:true,
+  armL:[[0,[.24,-.3,.44]],[.4,[.26,-.25,.46]],[.8,[.34,-.12,.55]],[1.3,TUCK.arm],[2.4,TUCK.arm]],
+  feet:[[-1,.7,.26]], footW:.06, kneeIn:true, hands:null, gaze:[[0,0],[2.4,0]], tuckAfter:.5, point:[.8,9], seatOn:true,
+  phases:[[0,'体育座り','ひざを立てて座る。'],[.5,'小さくなる','太ももとひざをおなかと胸につけ、頭をうつむかせておへそを見る。'],[1.0,'つま先を伸ばす','足首を伸ばしてつま先をぴんと伸ばす。これが前転で回っている時の形。']]},
  zenten:{name:'前転', straightArms:false, dur:2.4,
   pel:[[0,[0.000,0.80,0]],[.3,[0.064,0.52,0]],[.55,[0.192,0.55,0]],[.75,[0.448,0.74,0]],[.95,[0.704,0.62,0]],[1.1,[0.960,0.46,0]],[1.25,[1.750,0.34,0]],[1.4,[1.950,0.42,0]],[1.7,[2.030,0.5,0]],[2.1,[2.080,0.80,0]],[2.4,[2.080,0.80,0]]],
   ori:[[0,[90,0,0]],[.3,[90,30,0]],[.55,[90,62,0]],[.75,[90,125,0]],[.95,[90,205,0]],[1.1,[90,262,0]],[1.25,[90,322,0]],[1.4,[90,382,0]],[1.7,[90,390,0]],[2.1,[90,362,0]],[2.4,[90,360,0]]],
-  bend:[[0,[0,0,0]],[.55,[10,10,10]],[.75,[30,25,35]],[1.1,[35,25,30]],[1.4,[25,15,12]],[1.8,[5,0,0]],[2.4,[0,0,0]]],
-  legL:[[0,[.06,-1,0]],[.7,[.06,-1,0]],[.85,[.08,-.5,.6,.6]],[.95,[.1,-.25,.95,.68]],[1.2,[.1,-.35,.92,.68]],[1.35,[.08,-.8,.5,.6]],[2.4,[.06,-1,0]]],
+  bend:[[0,[0,0,0]],[.55,[10,10,10]],[.75,TUCK.bend],[1.1,TUCK.bend],[1.4,[25,15,12]],[1.8,[5,0,0]],[2.4,[0,0,0]]],
+  legL:[[0,[.06,-1,0]],[2.4,[.06,-1,0]]], legFK:[[0,[0,0,0]],[.3,[80,110,0]],[.75,[70,90,2]],[.95,[118,140,2]],[1.2,[120,140,2]],[1.35,[105,130,2]],[1.5,[95,120,3]],[1.8,[70,90,3]],[2.4,[0,0,3]]],
   armL:[[0,[.22,-.5,.1]],[.35,[.18,0,.5]],[1.05,[.3,.15,.5]],[1.6,[.25,.1,.5]],[2.4,[.22,-.5,.1]]],
   feet:[[-1,.78,0.0],[1.38,99,2.02]], hands:[.5,.95,.5], roll:[.72], rollK:1.6, rollSig:1.5, headOn:[.74,1.3],
-  gaze:[[0,0],[.3,1],[.7,1]], tuckAfter:.7,
+  gaze:[[0,0],[.3,1],[.7,1]], tuckAfter:.7, point:[.82,1.3], sepOff:true,
   phases:[[0,'立つ','前を向いて立つ。'],[.3,'しゃがんで手をつく','しゃがんで、肩幅に開いた両手を足の少し前につく。'],[.65,'あごを引く','あごを引いておへそをのぞき込み、腰を上げる。'],
           [.85,'回る','頭の後ろ→背中→腰の順にマットにつけて、丸くなって回る。おなかと太ももを離さない。'],[1.3,'起き上がる','かかとをおしりに引き寄せ、その勢いで起き上がって立つ。']]},
 };
@@ -144,7 +154,7 @@ let TECH, TR, CON, PHASES, DUR;
 function loadTechData(key){
   TECH=TECHS[key]; const T=TECH;
   const L4=ks=>ks.map(([t,v])=>[t,v.length===3?v.concat([1]):v]);
-  TR={pel:T.pel, ori:T.ori, bend:T.bend, pelK:[[0,[1]],[T.dur,[1]]], legL:L4(T.legL), legR:L4(T.legL), armL:T.armL, armR:T.armL};
+  TR={pel:T.pel, ori:T.ori, bend:T.bend, pelK:[[0,[1]],[T.dur,[1]]], legL:L4(T.legL), legR:L4(T.legL), armL:T.armL, armR:T.armL}; if(T.legFK) TR.legFK=T.legFK;
   const fw=T.footW||.09;
   CON={footL:{on:T.feet.map(([a,b,x])=>[a,b,P3(x,BOX_H,-fw)])}, footR:{on:T.feet.map(([a,b,x])=>[a,b,P3(x,BOX_H,fw)])},
        handL:{on:T.hands?[[T.hands[0],T.hands[1],P3(T.hands[2],BOX_H,-.15)]]:[]}, handR:{on:T.hands?[[T.hands[0],T.hands[1],P3(T.hands[2],BOX_H,.15)]]:[]}};
@@ -252,7 +262,7 @@ function bodyPose(t,raw){
   J_.neck.rotation.set(bn*D,0,0); J_.head.rotation.set(0,0,0);
   fig.root.updateMatrixWorld(true);
   // 台上前転：頭の後ろ→背中→腰の順に跳び箱の上を転がる。体のいちばん低い所が上面に触れる高さへの補正量を全時間で求め、ならしてから使う（ガタつき防止）
-  if(TECH===TECHS.sit){ const k=Math.min(1,Math.max(0,(t-1.3)/0.3)); if(k>0){ const pp=new THREE.Vector3(); J_.pelvis.getWorldPosition(pp); body.position.y+=(BOX_H+0.11-pp.y)*k*k*(3-2*k); fig.root.updateMatrixWorld(true);} }
+  if(TECH===TECHS.sit||TECH.seatOn){ const k=TECH.seatOn?1:Math.min(1,Math.max(0,(t-1.3)/0.3)); if(k>0){ const pp=new THREE.Vector3(); J_.pelvis.getWorldPosition(pp); body.position.y+=(BOX_H+0.11-pp.y)*k*k*(3-2*k); fig.root.updateMatrixWorld(true);} }
   if(TECH.headOn){
     if(ROLL){ const c=rollAt(t); body.position.x+=c[0]; body.position.y+=c[1]; fig.root.updateMatrixWorld(true); }
     if(rollRaw){ const [a,b]=TECH.headOn, r=0.08; let w=0;
@@ -373,15 +383,26 @@ function setPose(t){
       let pole=v3(sx*0.1,0,1);
       if(w>0.001){const fh=v3(0,0,1).applyAxisAngle(v3(0,1,0),trk('ori',t)[0]*D); fh.y=0.25; fh.normalize();
         const pl=fh.transformDirection(new THREE.Matrix4().copy(J_.pelvis.matrixWorld).invert());
-        pole=pole.clone().lerp(pl,w).normalize();}
+        if(pl.dot(pole)<0.2) pl.add(pole.clone().multiplyScalar(0.5)); pole=pole.clone().lerp(pl.normalize(),w*w*w).normalize();} // 着く直前まではひざの向きを変えない（急に変えるとひざが反対へ跳ぶ）
       if(TECH.kneeIn) pole=pole.clone().add(v3(sx*KNEE_OUT,0,0)).normalize(); // 体育座りはひざをそろえる（いつも同じ量で、急に変えない）
+      let fkDone=false;
+      if(TR.legFK){ // 空中の脚は角度で決める（股関節の曲げ・ひざの曲げ）。床に近づく時だけ、その形から床の点へ逆運動学で寄せる（ひざの向きは角度で決めた形のまま）
+        const [hf,kf,ab]=trk('legFK',t);
+        J_['hp'+sd].quaternion.setFromEuler(new THREE.Euler(-hf*D,0,sx*ab*D,'YXZ')); J_['kn'+sd].rotation.set(kf*D,0,0); fig.root.updateMatrixWorld(true);
+        if(w<=0.001){ fkDone=true; }
+        else { const A=J_.pelvis.worldToLocal(J_['an'+sd].getWorldPosition(new THREE.Vector3())), K=J_.pelvis.worldToLocal(J_['kn'+sd].getWorldPosition(new THREE.Vector3())), Hh=J_['hp'+sd].position.clone();
+          const mid=Hh.clone().lerp(A,0.5); const pk=K.sub(mid); if(pk.lengthSq()>1e-6) pole=pk.normalize(); }
+      }
       LEGPOLE[sd]=pole;
-      const lt=J_.pelvis.worldToLocal(MQ.noCross(sd,v3(x,y,z),'leg').lerp(v3(x,y,z),w)); // 床に近づくほど床の点を優先
+      if(!fkDone){
+      let lt=J_.pelvis.worldToLocal(MQ.noCross(sd,v3(x,y,z),'leg').lerp(v3(x,y,z),w)); // 床に近づくほど床の点を優先
+      if(TR.legFK){ const A=J_.pelvis.worldToLocal(J_['an'+sd].getWorldPosition(new THREE.Vector3())); const [,cp]=contact(L.cn,t); const g=J_.pelvis.worldToLocal(v3(cp.x,cp.y+ankleH,cp.z)); lt=A.lerp(g,w); }
       solve2(J_['hp'+sd],J_['kn'+sd],lt,pole,T1,T2,1); fig.root.updateMatrixWorld(true);
       { // ひざが中心線に近づくほど、曲がる向きを連続的に外へ寄せる（急に切り替えるとひざが跳ねる）
         const kp=J_.pelvis.worldToLocal(J_['kn'+sd].getWorldPosition(new THREE.Vector3()));
-        const k=Math.min(1,Math.max(0,(0.05-kp.x*sx)/0.08))*(1-w); // 床についている足には使わない
+        const k=TECH.sepOff?0:Math.min(1,Math.max(0,(0.05-kp.x*sx)/0.08))*(1-w); // 床についている足には使わない
         if(k>0){ pole=pole.clone().add(v3(sx*1.2*k,0,0)).normalize(); solve2(J_['hp'+sd],J_['kn'+sd],lt,pole,T1,T2,1); fig.root.updateMatrixWorld(true);} }
+      }
       fig.root.updateMatrixWorld(true);
       J_['an'+sd].quaternion.set(0,0,0,1);
       if(w>0.001){const pf=v3(0,0,1).transformDirection(J_.pelvis.matrixWorld); pf.y=0; if(pf.lengthSq()<1e-4)pf.set(0,0,1); pf.normalize();
@@ -392,7 +413,7 @@ function setPose(t){
         if(k>0){ J_['an'+sd].rotateX(48*D*k); J_['to'+sd].rotation.x=8*D*k; fig.root.updateMatrixWorld(true);} } // 空中ではつま先をぴんと伸ばす
     } else {
       const tgt=MQ.noCross(sd,v3(x,y,z),'arm').lerp(v3(x,y,z),w);
-      MQ.armIK(sd,tgt,v3(sx*1,0,-0.3)); // 鎖骨（肩の付け根）の連動を含む
+      const ap=TECH.armPole||[1,0,-0.3]; MQ.armIK(sd,tgt,v3(sx*ap[0],ap[1],ap[2])); // 鎖骨（肩の付け根）の連動を含む。抱え込む時はひじを外・前へ
       fig.root.updateMatrixWorld(true);
       J_['wr'+sd].quaternion.set(0,0,0,1);
       if(w>0.001){const fq=new THREE.Quaternion(); J_['wr'+sd].getWorldQuaternion(fq); setWorldQuat(J_['wr'+sd],fq.slerp(HAND_DOWN[sd],w));}
@@ -408,7 +429,7 @@ function setPose(t){
    const fwdPt=v3(pe.x+4,pe.y*0.8,0), handPt=v3(TECH.hand[2],BOX_H,0);
    if(TECH.tuckAfter&&t>TECH.tuckAfter) GAZE=null; else { GAZE=fwdPt.lerp(handPt,w); MQ.aimHead(GAZE,0.45); } }
   // 体の部品どうしの重なり：脚（太もも・すね）が同じ側の腕に重なったら、脚を内側へ寄せて解き直す（中心線は越えない）
-  ['L','R'].forEach(sd=>{ const sx=sd==='R'?-1:1, wp=n=>J_[n].getWorldPosition(new THREE.Vector3());
+  if(!TECH.sepOff) ['L','R'].forEach(sd=>{ const sx=sd==='R'?-1:1, wp=n=>J_[n].getWorldPosition(new THREE.Vector3());
     const segd=(a,b,c,d)=>{let m=9;for(let i=0;i<=6;i++){const p=a.clone().lerp(b,i/6);for(let j=0;j<=6;j++){m=Math.min(m,p.distanceTo(c.clone().lerp(d,j/6)));}}return m;};
     for(let it=0;it<5;it++){ const sh=wp('sh'+sd),el=wp('el'+sd),wr=wp('wr'+sd),hp=wp('hp'+sd),kn=wp('kn'+sd),an=wp('an'+sd);
       const pen=Math.max(0.035+0.05-segd(sh,el,hp,kn),0.028+0.05-segd(el,wr,hp,kn),0.028+0.038-segd(el,wr,kn,an),0.035+0.038-segd(sh,el,kn,an));
