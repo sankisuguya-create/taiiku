@@ -601,7 +601,12 @@ function setPose(t){
       if(w>0.001){const fh=v3(0,0,1).applyAxisAngle(v3(0,1,0),trk('ori',t)[0]*D); fh.y=0.25; fh.normalize();
         const pl=fh.transformDirection(new THREE.Matrix4().copy(J_.pelvis.matrixWorld).invert());
         pole=pole.clone().lerp(pl,w).normalize();}
-      solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'leg')),pole,T1,T2,1);
+      const lt=J_.pelvis.worldToLocal(MQ.noCross(sd,v3(x,y,z),'leg').lerp(v3(x,y,z),w)); // 床に近づくほど床の点を優先
+      solve2(J_['hp'+sd],J_['kn'+sd],lt,pole,T1,T2,1); fig.root.updateMatrixWorld(true);
+      { // ひざが中心線に近づくほど、曲がる向きを連続的に外へ寄せる（急に切り替えるとひざが跳ねる）
+        const kp=J_.pelvis.worldToLocal(J_['kn'+sd].getWorldPosition(new THREE.Vector3()));
+        const k=Math.min(1,Math.max(0,(0.10-kp.x*sx)/0.12))*(1-w); // 床についている足には使わない
+        if(k>0){ pole=pole.clone().add(v3(sx*1.2*k,0,0)).normalize(); solve2(J_['hp'+sd],J_['kn'+sd],lt,pole,T1,T2,1); fig.root.updateMatrixWorld(true);} }
       fig.root.updateMatrixWorld(true);
       J_['an'+sd].quaternion.set(0,0,0,1);
       if(w>0.001){const pf=v3(0,0,1).transformDirection(J_.pelvis.matrixWorld); pf.y=0; if(pf.lengthSq()<1e-4)pf.set(0,0,1); pf.normalize();
@@ -609,7 +614,7 @@ function setPose(t){
         const fq=new THREE.Quaternion(); J_['an'+sd].getWorldQuaternion(fq); setWorldQuat(J_['an'+sd],fq.slerp(qf,w));}
       MQ.toeFlat(sd,w);
     } else {
-      const tgt=w>0.999?v3(x,y,z):MQ.noCross(sd,v3(x,y,z),'arm');
+      const tgt=MQ.noCross(sd,v3(x,y,z),'arm').lerp(v3(x,y,z),w);
       MQ.armIK(sd,tgt,v3(sx*1,0,-0.3)); // 鎖骨（肩の付け根）の連動を含む
       fig.root.updateMatrixWorld(true);
       J_['wr'+sd].quaternion.set(0,0,0,1);
