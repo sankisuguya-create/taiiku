@@ -84,8 +84,8 @@ function buildMannequin(THREE, css){
   const solid=c=>new THREE.MeshBasicMaterial({color:c});
   const SKIN={
     doll:{R:lam('#4f6f9a'),L:lam('#dce5ee'),T:lam('#c9d1da'),S:lam('#d4dbe2'),J:lam('#aeb8c3'),A:lam('#4a545e'),O:lam(css('--joint')||'#e0761c'),
-          BR:lam('#243f66'),BL:lam('#8fa6bf'),BS:lam('#8e9aa7'),G:lam('#7d8894')},   // B*＝腕の裏側（二の腕の後ろ・前腕と手の甲側）
-    wire:{R:wir('#1f4b99'),L:wir('#5fa8e6'),T:wir('#55636e'),S:wir('#55636e'),J:solid('#e0761c'),A:solid('#22303a'),O:solid('#e0761c'),BR:wir('#1f4b99'),BL:wir('#5fa8e6'),BS:wir('#55636e'),G:solid('#7d8894')},
+          BR:lam('#243f66'),BL:lam('#8fa6bf'),BS:lam('#8e9aa7'),G:lam('#7d8894'),P:lam('#e8c4a0')},   // P＝手のひらと指（肌色）   // B*＝腕の裏側（二の腕の後ろ・前腕と手の甲側）
+    wire:{R:wir('#1f4b99'),L:wir('#5fa8e6'),T:wir('#55636e'),S:wir('#55636e'),J:solid('#e0761c'),A:solid('#22303a'),O:solid('#e0761c'),BR:wir('#1f4b99'),BL:wir('#5fa8e6'),BS:wir('#55636e'),G:solid('#7d8894'),P:wir('#55636e')},
   };
   const root=new THREE.Group(), body=new THREE.Group(); root.add(body);
   const J_={}, allMeshes=[];
@@ -154,7 +154,7 @@ function buildMannequin(THREE, css){
   [-1,1].forEach(x=>mesh(new THREE.SphereGeometry(hh*0.035,8,6),'A',J_.head,x*hh*0.14,hh*0.56,hh*0.39,{wireOnly:true}));
   // ---- 手足 ----
   const handC={}, palmC={}, fingers={R:[],L:[]};
-  const fseg=(len,r)=>{const g=new THREE.Group();mesh(new THREE.CylinderGeometry(r,r*0.9,len,6),'S',g,0,-len/2);mesh(new THREE.SphereGeometry(r*0.9,6,4),'S',g,0,-len);return g;};
+  const fseg=(len,r)=>{const g=new THREE.Group();mesh(new THREE.CylinderGeometry(r,r*0.9,len,6),'P',g,0,-len/2);mesh(new THREE.SphereGeometry(r*0.9,6,4),'P',g,0,-len);return g;};
   [['R',-1],['L',1]].forEach(([k,sx])=>{
     const role=k;
     const shX=sx*(G(.095)+G(.012)), clX=sx*G(.02);
@@ -167,7 +167,7 @@ function buildMannequin(THREE, css){
     const wr=J(fr,'wr'+k,0,-L(R.forearm),0); joint(wr,G(.0105)); // 手首の球は小さく（手のひらを隠さない）
     // 手：手のひら＋指4本（各2節）＋親指（2節）
     const pl=0.058, pw=0.06, pt=0.02; // 手のひらを少し長く
-    mesh(new THREE.BoxGeometry(pw,pl,pt),'S',wr,0,-pl/2);
+    mesh(new THREE.BoxGeometry(pw,pl,pt),'P',wr,0,-pl/2);
     mesh(new THREE.BoxGeometry(pw*1.01,pl*1.01,pt*0.35),'BS',wr,0,-pl/2,-pt*0.35,{dollOnly:true});   // 手の甲
     { // 手のひらのしわの印：右手＝「て」、左手＝その左右反転（手のひら側から見て）。手のひらの面に貼った絵
       const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d');
@@ -429,12 +429,12 @@ const TECHS={
   pel:[[.78,[-0.2,1.0,0]],[.88,[0.18,1.12,0]],[.98,[0.55,1.2,0]],[1.1,[0.95,1.12,0]],[1.28,[1.4,0.95,0]],[1.4,[1.62,0.74,0]],[1.55,[1.7,0.62,0]],[1.85,[1.74,0.79,0]],[2.6,[1.74,0.80,0]]],
   ori:[[.78,[90,50,0]],[.86,[90,82,0]],[.94,[90,80,0]],[1.02,[90,50,0]],[1.12,[90,18,0]],[1.28,[90,5,0]],[1.4,[90,22,0]],[1.55,[90,28,0]],[1.85,[90,6,0]],[2.6,[90,4,0]]],
   bend:[[0,[0,0,0]],[.62,[0,0,0]],[.88,[0,5,-15]],[1.1,[0,0,-5]],[1.5,[10,5,0]],[1.9,[0,0,0]],[2.6,[0,0,0]]],
-  legL:[[.75,[.05,-.9,-.4]],[.84,[.55,-.75,-.3]],[.92,[.9,-.3,.1]],[1.02,[.85,-.4,.35]],[1.12,[.6,-.7,.4]],[1.28,[.15,-.95,.2]],[2.6,[.08,-1,0]]],
+  legL:[[.75,[.05,-.9,-.4]],[.84,[.65,-.65,-.4]],[.92,[.97,-.12,-.2]],[1.0,[.97,-.15,.1]],[1.08,[.7,-.6,.3]],[1.18,[.12,-.98,.15]],[2.6,[.08,-1,0]]],
   armL:[[.82,[.16,.05,.5]],[1.1,[.3,.35,.3]],[1.38,[.25,.05,.45]],[1.9,[.25,-.1,.45]],[2.6,[.22,-.5,.1]]],
   hand:[.84,0.97,0.66], land:[1.38,1.72],
   gaze:[[0,0],[.3,0],[.55,1],[.95,1],[1.2,0]],
   phases:[[0,'助走','助走の勢いを残したまま、踏み切り板へ。'],[.45,'踏み切り','両足をそろえて「トン」と踏み切る。腕は後ろから前へ振る。'],
-          [.85,'着手','跳び箱の奥に両手をそろえて「パン」と着く。腰が高く上がり、脚を左右に開く。'],[1.0,'突き放し','両手で跳び箱を「グッ」と突き放して、体を起こす。'],
+          [.85,'着手','跳び箱の奥（遠く）に両手をそろえて「パン」と着く。体はほぼ水平、脚を左右に大きく開く。'],[1.0,'突き放し','両手で跳び箱を「グッ」と突き放して体を起こし、脚を閉じる。'],
           [1.36,'着地','ひざを曲げて衝撃をやわらげ、両足で止まる。腕は前。']]},
  kakaekomi:{name:'かかえ込み跳び', straightArms:true, dur:2.6,
   pel:[[.78,[-0.2,1.02,0]],[.88,[0.12,1.25,0]],[.98,[0.45,1.45,0]],[1.08,[0.85,1.38,0]],[1.26,[1.25,1.05,0]],[1.38,[1.45,0.74,0]],[1.52,[1.52,0.62,0]],[1.85,[1.56,0.79,0]],[2.6,[1.56,0.80,0]]],
