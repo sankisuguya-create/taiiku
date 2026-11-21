@@ -493,6 +493,7 @@ function fingerSet(sd,flat){ // flat=1で床にぴったり開く
   fingers[sd].forEach(f=>{f.base.rotation.set(-curl,0,f.spread*spread*0.6); f.j2.rotation.set(-curl*1.1,0,0);});
   const T=fingers[sd].thumb; T.tb.rotation.set(-0.3*(1-flat),0,T.sx*(30+flat*30)*D); T.tj.rotation.set(-curl*0.6,0,0);
 }
+const HANDY=0.017; // 手のひらを床・跳び箱に着ける時の手首の高さ（手のひらの厚みの半分）
 const qBody=new THREE.Quaternion(); const AIM=0.85; let ARM=L1+L2;
 function resetGirdle(){['R','L'].forEach(sd=>{J_['cl'+sd].rotation.set(0,0,0);J_['fr'+sd].quaternion.set(0,0,0,1);});}
 function bodyPose(t,raw){
@@ -528,7 +529,7 @@ function bodyPose(t,raw){
       // 各肩の「あるべき位置」（手から腕の長さの所）を求め、体を平面内で回して動かして近づける
       const src=[],dst=[],wt=[];
       [['L',wl,cl],['R',wr,cr]].forEach(([sd,w,cp])=>{ if(w<=0) return;
-        const Hh=v3(cp.x,FLOOR+0.075,cp.z);
+        const Hh=v3(cp.x,FLOOR+HANDY,cp.z);
         MQ.armIK(sd,Hh,v3((sd==='R'?-1:1),0,-0.3));   // 鎖骨の連動を含めた肩の位置で測る
         const S=new THREE.Vector3(); J_['sh'+sd].getWorldPosition(S);
         const d=S.clone().sub(Hh);
@@ -593,7 +594,7 @@ function corrAt(t){const a=CORR, x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)), 
 function tgtAt(k,t){const a=TGT[k], x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)), i=Math.floor(x), f=x-i;
   const L=LIMBS[k]; const p=v3(...a[i].map((v,n)=>v+(a[i+1][n]-v)*f));
   const [w,cp]=contact(L.cn,t);
-  if(w>0) p.lerp(v3(cp.x,FLOOR+(L.kind==='leg'?ankleH:0.075),cp.z),w);
+  if(w>0) p.lerp(v3(cp.x,FLOOR+(L.kind==='leg'?ankleH:HANDY),cp.z),w);
   return [p.x,p.y,p.z,w];}
 let headMesh=MQ.headMesh;
 let GAZE=null;
@@ -624,7 +625,7 @@ function setPose(t){
       MQ.armIK(sd,tgt,v3(sx*1,0,-0.3)); // 鎖骨（肩の付け根）の連動を含む
       fig.root.updateMatrixWorld(true);
       J_['wr'+sd].quaternion.set(0,0,0,1);
-      if(w>0.001){const fq=new THREE.Quaternion(); J_['wr'+sd].getWorldQuaternion(fq); setWorldQuat(J_['wr'+sd],fq.slerp(HAND_DOWN[sd],w));}
+      if(w>0.001){const fq=new THREE.Quaternion(); J_['wr'+sd].getWorldQuaternion(fq); setWorldQuat(J_['wr'+sd],fq.slerp(HAND_DOWN[sd],Math.sqrt(w)));} // 着く前から手のひらを下へ向ける（指が先に刺さらない）
       MQ.distributeTwist(sd);
       fingerSet(sd,w);
     }
@@ -719,7 +720,7 @@ function frame(now){
 }
 // 検証用（tools/verify/check.js が使う）
 window.__motion={rom:MQ.ROM,DUR,setPose:t=>setPose(t),J:J_,headMesh,armLen:L1+L2,legLen:T1+T2,
-  contacts:[['handL','wrL','shL',0.075],['handR','wrR','shR',0.075],['footL','anL','hpL',null],['footR','anR','hpR',null]].map(([c,j,s,h])=>({name:c,joint:j,root:s,
+  contacts:[['handL','wrL','shL',HANDY],['handR','wrR','shR',HANDY],['footL','anL','hpL',null],['footR','anR','hpR',null]].map(([c,j,s,h])=>({name:c,joint:j,root:s,
     reach:c[0]==='h'?L1+L2:T1+T2, at:t=>{const [w,cp]=contact(CON[c],t);return w>0?{w,x:cp.x,y:FLOOR+(h===null?ankleH:h),z:cp.z}:null;}})),
   support:t=>['L','R'].filter(sd=>contact(CON['hand'+sd],t)[0]>=0.999)};
 resize(); setT(0); requestAnimationFrame(frame);
