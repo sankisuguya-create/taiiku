@@ -311,7 +311,13 @@ function buildMannequin(THREE, css){
     root.updateMatrixWorld(true); const p=ref.worldToLocal(target.clone());
     if(p.x*sx<min) p.x=sx*min; return ref.localToWorld(p);
   }
-  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,noCross,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
+  // 体の重心（体節ごとの重さの割合：Winter『Biomechanics and Motor Control of Human Movement』の表。体節の中点で近似）
+  const MASS=[['head',null,.081],['pelvis','neck',.497],['shL','elL',.028],['shR','elR',.028],['elL','wrL',.016],['elR','wrR',.016],['wrL',null,.006],['wrR',null,.006],
+              ['hpL','knL',.1],['hpR','knR',.1],['knL','anL',.0465],['knR','anR',.0465],['anL',null,.0145],['anR',null,.0145]];
+  function com(){ root.updateMatrixWorld(true); const c=v3(0,0,0); let m=0; const a=new THREE.Vector3(), b=new THREE.Vector3();
+    MASS.forEach(([p,q,w])=>{ if(p==='head') headMesh.getWorldPosition(a); else J_[p].getWorldPosition(a); if(q){J_[q].getWorldPosition(b); a.add(b).multiplyScalar(0.5);} c.add(a.multiplyScalar(w)); m+=w; });
+    return c.multiplyScalar(1/m); }
+  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,com,noCross,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
 }
 
 // 体育館（本人の目線で、どちらを向いているか分かる目印つき）。opts.center:[x,z] 中心、opts.yaw 向き、opts.target:[x,z] 相手の位置（体育館の中の座標）
