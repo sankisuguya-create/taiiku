@@ -161,6 +161,13 @@ function buildMannequin(THREE, css){
     const pl=0.05, pw=0.058, pt=0.02;
     mesh(new THREE.BoxGeometry(pw,pl,pt),'S',wr,0,-pl/2);
     mesh(new THREE.BoxGeometry(pw*1.01,pl*1.01,pt*0.35),'BS',wr,0,-pl/2,-pt*0.35,{dollOnly:true});   // 手の甲
+    { // 手のひらのしわの印：右手＝「て」、左手＝その左右反転（手のひら側から見て）。手のひらの面に貼った絵
+      const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d');
+      x.save(); if(k==='L'){x.translate(128,0);x.scale(-1,1);}
+      x.fillStyle='#6f7b88'; x.font='bold 112px "Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText('て',64,70); x.restore();
+      const pm=new THREE.Mesh(new THREE.PlaneGeometry(pw*0.95,pl*0.95),new THREE.MeshLambertMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false}));
+      pm.position.set(0,-pl/2,pt/2+0.0015); pm.rotation.z=Math.PI; pm.userData.fixed=true; wr.add(pm); // 指先が下なので絵を180°回して、指を上にして見た時に正しい向き
+    }
     [[.021,.030,.020,.0058],[.007,.033,.022,.006],[-.007,.031,.021,.0058],[-.021,.024,.017,.0052]].forEach(([x,l1,l2,r],i)=>{
       const base=new THREE.Group(); base.position.set(sx*x,-pl,0); wr.add(base);
       const p1=fseg(l1,r); base.add(p1);
