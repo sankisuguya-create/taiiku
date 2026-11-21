@@ -628,6 +628,7 @@ const legLen=(T1+T2)*0.985;
 let TGT=[];
 let CORR=null, RAWC=null;
 function precomputeCorr(){ // 腕を伸ばすための体の補正量を全時間ぶん求めてならす
+  if(!TECH.straightArms){ CORR=null; return; } // 腕で体を支えない技では使わない（使うと転がりの補正を二重に足してしまう）
   const N=Math.ceil(DUR*SMHZ)+1, raw=[];
   for(let i=0;i<N;i++){ RAWC=[0,0,0]; bodyPose(i/SMHZ,true);
     // 補正後の骨盤の位置を基準の式で表し直す（骨盤まわりの回転＋移動）
