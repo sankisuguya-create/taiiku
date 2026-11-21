@@ -256,24 +256,38 @@ function buildMannequin(THREE, css){
   // 本人の目線：目の位置から、顔の向きへ。頭の部品は目線を描く間だけ隠す
   const headParts=[]; J_.head.children.forEach(o=>{if(o.isMesh)headParts.push(o);});
   const eye=new THREE.Object3D(); eye.position.set(0,hh*0.56,hh*0.3); J_.head.add(eye);
-  function eyeCamera(cam){
+  function eyeCamera(cam,target){
     root.updateMatrixWorld(true);
     const p=new THREE.Vector3(); eye.getWorldPosition(p);
     const q=new THREE.Quaternion(); eye.getWorldQuaternion(q);
     cam.position.copy(p); cam.up.copy(v3(0,1,0).applyQuaternion(q));
-    cam.lookAt(p.clone().add(v3(0,-0.25,1).normalize().applyQuaternion(q))); // 少し下を見る（人の視線の向きの目安）
+    if(target) cam.lookAt(target);                                          // 目で目標を見る（頭が向ききらない分は目が動く）
+    else cam.lookAt(p.clone().add(v3(0,-0.25,1).normalize().applyQuaternion(q))); // 目標がなければ少し下（人の視線の目安）
     cam.updateProjectionMatrix();
+  }
+  function aimHead(target,k){ // 目標の方へ頭を k の割合だけ向ける（残りは目で見る）。首・頭の可動域で止める
+    if(!target||k<=0) return;
+    root.updateMatrixWorld(true);
+    const p=new THREE.Vector3(); eye.getWorldPosition(p);
+    const q=new THREE.Quaternion(); J_.head.getWorldQuaternion(q);
+    const fwd=v3(0,-0.25,1).normalize().applyQuaternion(q), want=target.clone().sub(p).normalize();
+    const full=new THREE.Quaternion().setFromUnitVectors(fwd,want), part=new THREE.Quaternion().slerp(full,k*0.5);
+    ['neck','head'].forEach(n=>{const j=J_[n]; const pq=new THREE.Quaternion(); j.parent.getWorldQuaternion(pq); const wq=new THREE.Quaternion(); j.getWorldQuaternion(wq);
+      const nw=part.clone().multiply(wq); j.quaternion.copy(pq.invert().multiply(nw));
+      const e=new THREE.Euler().setFromQuaternion(j.quaternion,'YXZ'), r=ROM[n], c=(v,[a,b])=>Math.max(a*D,Math.min(b*D,v));
+      j.rotation.set(c(e.x,r.x),c(e.y,r.y),c(e.z,r.z),'YXZ'); j.updateMatrixWorld(true);});
   }
   function showHead(on){ headParts.forEach(o=>{ o.userData.hid=!on; o.visible=on&&!(o.userData.wireOnly&&!wireOn); }); }
   let wireOn=false; const _setSkin=setSkin;
   function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); }
   const dims={L1:ARM1,L2:ARM2,T1:hipY-L(R.knee),T2:L(R.knee-R.ankle),hipY,chestH,ankleH:hipY-(hipY-L(R.knee))-L(R.knee-R.ankle),ball:L(R.footL)*0.55,footH:L(R.ankle)};
-  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,eyeCamera,showHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
+  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
 }
 
-// 体育館（本人の目線で、どちらを向いているか分かる目印つき）。opts.center:[x,z] 中心、opts.target:[x,z] 相手の位置
+// 体育館（本人の目線で、どちらを向いているか分かる目印つき）。opts.center:[x,z] 中心、opts.yaw 向き、opts.target:[x,z] 相手の位置（体育館の中の座標）
 function buildGym(THREE, opts){
-  opts=opts||{}; const g=new THREE.Group(); const [cx,cz]=opts.center||[0,0];
+  opts=opts||{}; const g=new THREE.Group(); const [gx,gz]=opts.center||[0,0]; const cx=0, cz=0;
+  g.position.set(gx,0,gz); g.rotation.y=opts.yaw||0;   // 体育館の中心と向き（yaw=π/2 で「前」が +X）。target は体育館の中での位置
   const lam=c=>new THREE.MeshLambertMaterial({color:c});
   const floorM=lam('#d9b98c');
   const fl=new THREE.Mesh(new THREE.PlaneGeometry(28,28),floorM); fl.rotation.x=-Math.PI/2; fl.position.set(cx,-0.002,cz); g.add(fl);
@@ -287,6 +301,17 @@ function buildGym(THREE, opts){
   wall(28,7,0,14,Math.PI,'#7aa6d6'); wall(28,7,0,-14,0,'#eef0ec'); wall(28,7,14,0,-Math.PI/2,'#b8d8b0'); wall(28,7,-14,0,Math.PI/2,'#f0c9a0');
   const disc=new THREE.Mesh(new THREE.CircleGeometry(1.4,40),lam('#ffffff')); disc.position.set(cx,3.2,cz+13.98); disc.rotation.y=Math.PI; g.add(disc);
   [[0,13.97,Math.PI],[0,-13.97,0],[13.97,0,-Math.PI/2],[-13.97,0,Math.PI/2]].forEach(([x,z,ry])=>{const b=new THREE.Mesh(new THREE.PlaneGeometry(26,0.9),lam('#f7fbff'));b.position.set(cx+x,5.8,cz+z);b.rotation.y=ry;g.add(b);});
+  // 大きな文字（前・後・右・左・天井）。前を向いた時の右は −X 側
+  const label=(txt,w,x,y,z,rx,ry,col)=>{const c=document.createElement('canvas');c.width=c.height=256;const x2=c.getContext('2d');
+    x2.fillStyle=col||'#1d2a33';x2.font='bold '+(txt.length>1?110:200)+'px "Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif';x2.textAlign='center';x2.textBaseline='middle';x2.fillText(txt,128,138);
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,w),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c),transparent:true}));
+    m.position.set(cx+x,y,cz+z);m.rotation.set(rx,ry,0,'YXZ');g.add(m);};
+  label('前',2.4,0,3.2,13.95,0,Math.PI);
+  label('後',3.4,0,3.2,-13.95,0,0);
+  label('右',3.4,-13.95,3.2,0,0,Math.PI/2);
+  label('左',3.4,13.95,3.2,0,0,-Math.PI/2);
+  const ceil=new THREE.Mesh(new THREE.PlaneGeometry(28,28),new THREE.MeshBasicMaterial({color:0xe9edf1})); // 下からの光がないので、照明に頼らない色 ceil.position.set(cx,7,cz); ceil.rotation.x=Math.PI/2; g.add(ceil);
+  [[0,0],[0,7],[0,-7],[7,0],[-7,0]].forEach(([x,z])=>label('天井',4,x,6.98,z,Math.PI/2,0)); // 見上げた角度でも見えるよう5か所
   // 相手（パスを受ける人の目印）
   if(opts.target){const [tx,tz]=opts.target; const m=lam('#e0761c');
     const body=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.2,1.2,16),m); body.position.set(tx,0.6,tz); g.add(body);

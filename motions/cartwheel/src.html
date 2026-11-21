@@ -61,7 +61,7 @@ const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(2,4,3); sce
 const cam=new THREE.PerspectiveCamera(30,1.6,0.1,50);
 const M=c=>new THREE.MeshLambertMaterial({color:c});
 //@include lib/mannequin.js
-const GYM=buildGym(THREE,{center:[1.2,0]}); scene.add(GYM);
+const GYM=buildGym(THREE,{center:[1.2,0],yaw:Math.PI/2}); scene.add(GYM); // 構えで向く方向（進む方向）を「前」に
 const MQ=buildMannequin(THREE,css); const fig=MQ; scene.add(fig.root);
 const J_=fig.J_, body=fig.body, handC=MQ.handC, palmC=MQ.palmC, fingers=MQ.fingers;
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(8,8),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.05}));
@@ -292,6 +292,7 @@ function tgtAt(k,t){const a=TGT[k], x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)
   if(w>0) p.lerp(v3(cp.x,FLOOR+(L.kind==='leg'?ankleH:0.075),cp.z),w);
   return [p.x,p.y,p.z,w];}
 let headMesh=MQ.headMesh;
+let GAZE=null;
 function setPose(t){
   const px=bodyPose(t);
   LIMBS.forEach((L,k)=>{
@@ -320,6 +321,11 @@ function setPose(t){
     }
   });
   fig.root.updateMatrixWorld(true);
+  // 目線（調べた指導の要点）：構えは前、踏み込みから着地までは両手の間の床、起き上がると前へ戻す。頭は動かしすぎず、残りは目で見る
+  {const kk=[[0,0],[.30,0],[.55,1],[1.55,1],[2.05,0],[3.2,0]]; let w=0; for(let i=0;i<kk.length-1;i++){if(t>=kk[i][0]&&t<=kk[i+1][0]){let u=(t-kk[i][0])/(kk[i+1][0]-kk[i][0]);u=u*u*(3-2*u);w=kk[i][1]+(kk[i+1][1]-kk[i][1])*u;break;}}
+   const pe=new THREE.Vector3(); J_.head.getWorldPosition(pe); const pf=v3(0,0,1).transformDirection(J_.pelvis.matrixWorld); pf.y=0; if(pf.lengthSq()<1e-4)pf.set(1,0,0); pf.normalize();
+   const fwdPt=pe.clone().add(pf.multiplyScalar(4)); fwdPt.y=pe.y; const handPt=v3((CON.handL.p.x+CON.handR.p.x)/2,FLOOR,(CON.handL.p.z+CON.handR.p.z)/2);
+   GAZE=fwdPt.lerp(handPt,w); MQ.aimHead(GAZE,0.45); }
   bodyShadow.position.set(px,FLOOR+0.002,0.06);
 }
 // 再生の時間配分：倒立〜左足を下ろすまで（内部の0.85〜2.05秒）を約1.35倍速で進める。速さの変わり目はなめらかに
@@ -383,7 +389,7 @@ const fpRow=document.getElementById('fpv');
 function renderViews(){ // 全体の様子と、本人の目線（小窓または大きく）
   renderer.setScissorTest(true);
   const bg=new THREE.Color(css('--stage'));
-  const drawFP=(x,y,w,h)=>{fpCam.aspect=w/h; MQ.eyeCamera(fpCam); MQ.showHead(false); renderer.setViewport(x,y,w,h); renderer.setScissor(x,y,w,h); renderer.setClearColor(bg); renderer.clear(); renderer.render(scene,fpCam); MQ.showHead(true);};
+  const drawFP=(x,y,w,h)=>{fpCam.aspect=w/h; MQ.eyeCamera(fpCam,GAZE); MQ.showHead(false); renderer.setViewport(x,y,w,h); renderer.setScissor(x,y,w,h); renderer.setClearColor(bg); renderer.clear(); renderer.render(scene,fpCam); MQ.showHead(true);};
   if(fpMode==='large'){ drawFP(0,0,W,Hh); }
   else { renderer.setViewport(0,0,W,Hh); renderer.setScissor(0,0,W,Hh); renderer.setClearColor(bg); renderer.render(scene,cam);
     if(fpMode==='small'){ const w=Math.round(Math.min(W*0.38,320)), h=Math.round(w*0.66), x=W-w-8, y=8;

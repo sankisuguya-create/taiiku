@@ -61,7 +61,7 @@ const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(2,4,3); sce
 const cam=new THREE.PerspectiveCamera(30,1.6,0.1,50);
 const M=c=>new THREE.MeshLambertMaterial({color:c});
 //@include lib/mannequin.js
-const GYM=buildGym(THREE,{center:[0,3],target:[0,7]}); scene.add(GYM);
+const GYM=buildGym(THREE,{center:[0,3],target:[0,4]}); scene.add(GYM); // 相手は世界の z=7
 const MQ=buildMannequin(THREE,css); const fig=MQ; scene.add(fig.root);
 const J_=fig.J_, body=fig.body, handC=MQ.handC, palmC=MQ.palmC, fingers=MQ.fingers;
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(8,8),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.05}));
@@ -269,6 +269,7 @@ const FREE={R:[],L:[]};
 function freeAt(sd,t){const a=FREE[sd],x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)),i=Math.floor(x),f=x-i;return v3(...a[i].map((v,n)=>v+(a[i+1][n]-v)*f));}
 const legLen=(T1+T2)*0.985;
 let headMesh=MQ.headMesh;
+let GAZE=null;
 function setPose(t){
   bodyPose(t,leanAt(t));
   // 脚：床の足は固定（後ろ足はつま先を軸にかかとを上げる）、踏み出す脚は空中の向き→着地
@@ -303,6 +304,8 @@ function setPose(t){
       for(let it=0;it<14;it++){T.tb.updateMatrixWorld(true);T.tip.getWorldPosition(tipPos); if(tipPos.distanceTo(B)>=lim) break; tz+=5*D; T.tb.rotation.x=tz;}
     });
     fig.root.updateMatrixWorld(true); }
+  // 目線：手本どおり、ボールを下げている間も相手を見る（頭を半分向け、残りは目で）
+  GAZE=v3(0,1.36,7); MQ.aimHead(GAZE,0.5);
   const c=new THREE.Vector3(); J_.pelvis.getWorldPosition(c); bodyShadow.position.set(c.x,0.002,c.z+0.08);
   return B;
 }
@@ -367,7 +370,7 @@ const fpRow=document.getElementById('fpv');
 function renderViews(){ // 全体の様子と、本人の目線（小窓または大きく）
   renderer.setScissorTest(true);
   const bg=new THREE.Color(css('--stage'));
-  const drawFP=(x,y,w,h)=>{fpCam.aspect=w/h; MQ.eyeCamera(fpCam); MQ.showHead(false); renderer.setViewport(x,y,w,h); renderer.setScissor(x,y,w,h); renderer.setClearColor(bg); renderer.clear(); renderer.render(scene,fpCam); MQ.showHead(true);};
+  const drawFP=(x,y,w,h)=>{fpCam.aspect=w/h; MQ.eyeCamera(fpCam,GAZE); MQ.showHead(false); renderer.setViewport(x,y,w,h); renderer.setScissor(x,y,w,h); renderer.setClearColor(bg); renderer.clear(); renderer.render(scene,fpCam); MQ.showHead(true);};
   if(fpMode==='large'){ drawFP(0,0,W,Hh); }
   else { renderer.setViewport(0,0,W,Hh); renderer.setScissor(0,0,W,Hh); renderer.setClearColor(bg); renderer.render(scene,cam);
     if(fpMode==='small'){ const w=Math.round(Math.min(W*0.38,320)), h=Math.round(w*0.66), x=W-w-8, y=8;
