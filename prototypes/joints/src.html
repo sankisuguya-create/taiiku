@@ -40,6 +40,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   <div class="phase"><h2 id="phName">気をつけ</h2><p id="phTip">背骨は3つ（腰・背中の下・背中の上）、肩は鎖骨から動く。</p></div>
   <div class="row" id="poses"><p class="label">姿勢</p></div>
   <div class="row" id="skins"><p class="label">見た目</p></div>
+  <div class="row" id="fpv"><p class="label">本人の目線（どんな景色が見えるか）</p></div>
   <div class="row" id="views"><p class="label">見る向き（指でドラッグしても回せます）</p></div>
   <p class="note">【ラジオ体操】の姿勢は、追加した可動（足の指の付け根・腕に合わせた肩の付け根・前腕のひねり・背骨3つへの配分）の確認用。背骨を3つに分けたので、反る・丸めると背中がカーブする。胸を張る動きは「背中の上を反らす」＋「鎖骨で肩を後ろへ引く」の組み合わせ。</p>
 </div>
@@ -53,8 +54,9 @@ const scene=new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xffffff,0x88
 const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(2,4,3); scene.add(sun);
 const cam=new THREE.PerspectiveCamera(30,1.6,0.1,50);
 //@include lib/mannequin.js
+const GYM=buildGym(THREE,{center:[0,0]}); scene.add(GYM);
 const MQ=buildMannequin(THREE,css); scene.add(MQ.root); const J_=MQ.J_;
-const floor=new THREE.Mesh(new THREE.CircleGeometry(1.2,40),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.06})); floor.rotation.x=-Math.PI/2; scene.add(floor);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(1.2,40),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.06})); floor.rotation.x=-Math.PI/2; scene.add(floor); floor.visible=false; // 体育館の床を使う
 const D=Math.PI/180;
 const JN=Object.keys(J_);
 // 度。x:前後（胴は正で前へ曲げる、負で反る）、y:ひねり（鎖骨は肩を前後へ）、z:横（鎖骨は肩を上下へ）
@@ -97,10 +99,24 @@ stage.addEventListener('pointermove',e=>{if(!drag)return;az-=(e.clientX-drag.x)*
 let W=0,Hh=0; function resize(){W=stage.clientWidth;Hh=stage.clientHeight;renderer.setSize(W,Hh,false);dirty=true;}
 new ResizeObserver(resize).observe(stage); matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>dirty=true);
 const ease=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+const fpCam=new THREE.PerspectiveCamera(70,1,0.03,60); let fpMode='small';
+const fpRow=document.getElementById('fpv');
+[['small','小窓で見る'],['large','大きく見る'],['off','見ない']].forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;b.id='fp-'+k;
+  b.setAttribute('aria-pressed',String(k===fpMode));b.onclick=()=>{fpMode=k;[...fpRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));dirty=true;};fpRow.appendChild(b);});
+function renderViews(){ // 全体の様子と、本人の目線（小窓または大きく）
+  renderer.setScissorTest(true);
+  const bg=new THREE.Color(css('--stage'));
+  const drawFP=(x,y,w,h)=>{fpCam.aspect=w/h; MQ.eyeCamera(fpCam); MQ.showHead(false); renderer.setViewport(x,y,w,h); renderer.setScissor(x,y,w,h); renderer.setClearColor(bg); renderer.clear(); renderer.render(scene,fpCam); MQ.showHead(true);};
+  if(fpMode==='large'){ drawFP(0,0,W,Hh); }
+  else { renderer.setViewport(0,0,W,Hh); renderer.setScissor(0,0,W,Hh); renderer.setClearColor(bg); renderer.render(scene,cam);
+    if(fpMode==='small'){ const w=Math.round(Math.min(W*0.38,320)), h=Math.round(w*0.66), x=W-w-8, y=8;
+      renderer.setScissor(x-3,y-3,w+6,h+6); renderer.setClearColor(new THREE.Color('#ffffff')); renderer.clear(); drawFP(x,y,w,h); } }
+  renderer.setScissorTest(false);
+}
 function frame(now){
   if(anim){const k=Math.min(1,(now-anim.t0)/anim.dur),e=ease(k);KEYS.forEach(j=>{for(let a=0;a<3;a++)cur[j][a]=from[j][a]+(to[j][a]-from[j][a])*e;});apply();if(k>=1)anim=null;}
   if(dirty&&W){dirty=false;const dist=+(window.__dist||3.4),cy=0.85;cam.aspect=W/Hh;cam.position.set(Math.sin(az)*Math.cos(el)*dist,cy+Math.sin(el)*dist,Math.cos(az)*Math.cos(el)*dist);
-    cam.lookAt(0,cy,0);cam.updateProjectionMatrix();renderer.setClearColor(new THREE.Color(css('--stage')));renderer.render(scene,cam);}
+    cam.lookAt(0,cy,0);cam.updateProjectionMatrix();renderer.setClearColor(new THREE.Color(css('--stage')));renderViews();}
   requestAnimationFrame(frame);}
 resize(); apply(); go(0); requestAnimationFrame(frame);
 })();

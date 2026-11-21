@@ -43,6 +43,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   <div class="row" id="phases"><p class="label">局面へとぶ</p></div>
   <div class="row" id="zooms"><p class="label">大きさ（2本指でつまんでも変えられます）</p></div>
   <div class="row" id="skins"><p class="label">見た目</p></div>
+  <div class="row" id="fpv"><p class="label">本人の目線（どんな景色が見えるか）</p></div>
   <div class="row" id="views"><p class="label">見る向き（指でドラッグしても回せます）</p></div>
   <p class="note">人形は人体寸法の実測比から作った中間案（約6頭身）。時間配分と姿勢は、手本動画（トントン拍子「きれいに回る！側転のコツ」）のコマから写したもの。動画の途中の静止画面の時間は詰めています。見えない側の手足と足首は前後の姿勢から推定しています。</p>
 </div>
@@ -60,10 +61,11 @@ const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(2,4,3); sce
 const cam=new THREE.PerspectiveCamera(30,1.6,0.1,50);
 const M=c=>new THREE.MeshLambertMaterial({color:c});
 //@include lib/mannequin.js
+const GYM=buildGym(THREE,{center:[1.2,0]}); scene.add(GYM);
 const MQ=buildMannequin(THREE,css); const fig=MQ; scene.add(fig.root);
 const J_=fig.J_, body=fig.body, handC=MQ.handC, palmC=MQ.palmC, fingers=MQ.fingers;
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(8,8),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.05}));
-floor.rotation.x=-Math.PI/2; scene.add(floor);
+floor.rotation.x=-Math.PI/2; scene.add(floor); floor.visible=false; // 体育館の床を使う
 // 床の目印：踏み出し前の足の位置
 const D=Math.PI/180;
 const v3=(x,y,z)=>new THREE.Vector3(x,y,z);
@@ -374,6 +376,20 @@ let W=0,Hh=0;
 function resize(){W=stage.clientWidth;Hh=stage.clientHeight;renderer.setSize(W,Hh,false);dirty=true;}
 new ResizeObserver(resize).observe(stage);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>dirty=true);
+const fpCam=new THREE.PerspectiveCamera(70,1,0.03,60); let fpMode='small';
+const fpRow=document.getElementById('fpv');
+[['small','小窓で見る'],['large','大きく見る'],['off','見ない']].forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;b.id='fp-'+k;
+  b.setAttribute('aria-pressed',String(k===fpMode));b.onclick=()=>{fpMode=k;[...fpRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));dirty=true;};fpRow.appendChild(b);});
+function renderViews(){ // 全体の様子と、本人の目線（小窓または大きく）
+  renderer.setScissorTest(true);
+  const bg=new THREE.Color(css('--stage'));
+  const drawFP=(x,y,w,h)=>{fpCam.aspect=w/h; MQ.eyeCamera(fpCam); MQ.showHead(false); renderer.setViewport(x,y,w,h); renderer.setScissor(x,y,w,h); renderer.setClearColor(bg); renderer.clear(); renderer.render(scene,fpCam); MQ.showHead(true);};
+  if(fpMode==='large'){ drawFP(0,0,W,Hh); }
+  else { renderer.setViewport(0,0,W,Hh); renderer.setScissor(0,0,W,Hh); renderer.setClearColor(bg); renderer.render(scene,cam);
+    if(fpMode==='small'){ const w=Math.round(Math.min(W*0.38,320)), h=Math.round(w*0.66), x=W-w-8, y=8;
+      renderer.setScissor(x-3,y-3,w+6,h+6); renderer.setClearColor(new THREE.Color('#ffffff')); renderer.clear(); drawFP(x,y,w,h); } }
+  renderer.setScissorTest(false);
+}
 function frame(now){
   if(playing){const dt=(now-last)/1000;last=now;setT(t+dt*speed);if(t>=DUR_S)setPlaying(false);}
   if(dirty&&W){dirty=false;
@@ -383,7 +399,7 @@ function frame(now){
       tx=tx+(pp.x-tx)*k; cy=cy+(pp.y-cy)*k; }
     cam.aspect=W/Hh;cam.position.set(tx+Math.sin(az)*Math.cos(el)*dist,cy+Math.sin(el)*dist,tz+Math.cos(az)*Math.cos(el)*dist);
     cam.lookAt(tx,cy,tz);cam.updateProjectionMatrix();
-    renderer.setClearColor(new THREE.Color(css('--stage')));renderer.render(scene,cam);}
+    renderer.setClearColor(new THREE.Color(css('--stage')));renderViews();}
   requestAnimationFrame(frame);
 }
 // 検証用（tools/verify/check.js が使う）
