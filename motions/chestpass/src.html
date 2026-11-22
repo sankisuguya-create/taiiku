@@ -1,0 +1,399 @@
+<title>チェストパスの動き</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+/* 配置：上に舞台、その下に「いまの局面とこつ」、再生バー、局面ボタン、視点ボタン */
+:root{
+  --bg:#eef3f6; --fg:#1d2a33; --muted:#5b6b76; --panel:#ffffff; --line:#d3dde4;
+  --stage:#dfe8ee; --accent:#e0761c; --accent-fg:#ffffff;
+  --right:#1f4b99; --left:#9cc8f0; --joint:#e0761c; --skin:#e9c7a2; --shirt:#fbfcfd; --ball:#d9662b;
+  --font:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141b20; --fg:#e6edf2; --muted:#9aabb6; --panel:#1d262d; --line:#2f3c46;
+  --stage:#22303a; --accent:#f08a3a; --accent-fg:#141b20; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141b20; --fg:#e6edf2; --muted:#9aabb6; --panel:#1d262d; --line:#2f3c46;
+  --stage:#22303a; --accent:#f08a3a; --accent-fg:#141b20; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.25rem;margin:0}
+.stage{position:relative;width:100%;aspect-ratio:16/10;max-height:58vh;border-radius:12px;overflow:hidden;background:var(--stage);touch-action:none}
+.stage canvas{display:block;width:100%;height:100%}
+.phase{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-height:4.2em}
+.phase h2{margin:0 0 2px;font-size:1.15rem}
+.phase p{margin:0;font-size:1rem;line-height:1.6}
+.bar{display:flex;gap:8px;align-items:center}
+.bar input[type=range]{flex:1;min-width:0;height:48px;accent-color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.label{font-size:.8rem;color:var(--muted);width:100%;margin:0}
+button{font:inherit;font-weight:700;min-height:48px;padding:0 16px;border-radius:10px;border:2px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#play{min-width:96px}
+.note{font-size:.78rem;color:var(--muted);margin:0;line-height:1.6}
+</style>
+<div class="wrap">
+  <h1>チェストパスの動き</h1>
+  <div class="stage" id="stage"></div>
+  <div class="phase" aria-live="polite"><h2 id="phName">構え</h2><p id="phTip"></p></div>
+  <div class="bar"><button id="play">▶ 再生</button><input type="range" id="seek" min="0" max="1000" value="0" aria-label="再生位置"></div>
+  <div class="row" id="speeds"><p class="label">速さ</p></div>
+  <div class="row" id="phases"><p class="label">局面へとぶ</p></div>
+  <div class="row" id="zooms"><p class="label">大きさ（2本指でつまんでも変えられます）</p></div>
+  <div class="row" id="skins"><p class="label">見た目</p></div>
+  <div class="row" id="fpv"><p class="label">本人の目線（どんな景色が見えるか）</p></div>
+  <div class="row" id="views"><p class="label">見る向き（指でドラッグしても回せます）</p></div>
+  <p class="note">人形は人体寸法の実測比から作った中間案（約6頭身）。時間配分と姿勢は、手本動画（DIAMOND BASKETBALL SCHOOL「チェストパス」）のコマを1/30秒ごとに見て写したもの。作り方は接点駆動法（足は床、手はボールの表面を条件にして、体の傾きを計算）。体の奥側の腕と手首の細かい形は推定です。</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const stage=document.getElementById('stage');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+stage.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff,0x8899aa,0.75));
+const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(2,4,3); scene.add(sun);
+const cam=new THREE.PerspectiveCamera(30,1.6,0.1,50);
+const M=c=>new THREE.MeshLambertMaterial({color:c});
+//@include lib/mannequin.js
+const GYM=buildGym(THREE,{center:[0,3],target:[0,4]}); scene.add(GYM); // 相手は世界の z=7
+const MQ=buildMannequin(THREE,css); const fig=MQ; scene.add(fig.root);
+const J_=fig.J_, body=fig.body, handC=MQ.handC, palmC=MQ.palmC, fingers=MQ.fingers;
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(8,8),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.05}));
+floor.rotation.x=-Math.PI/2; scene.add(floor); floor.visible=false; // 体育館の床を使う
+// 床の目印：踏み出し前の足の位置
+const D=Math.PI/180;
+const v3=(x,y,z)=>new THREE.Vector3(x,y,z);
+
+const shadowM=()=>new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.15});
+const bodyShadow=new THREE.Mesh(new THREE.CircleGeometry(0.32,28),shadowM()); bodyShadow.rotation.x=-Math.PI/2; scene.add(bodyShadow);
+// 寸法
+fig.root.updateMatrixWorld(true);
+const L1=-J_.elR.position.y, L2=-J_.wrR.position.y;
+const T1=-J_.knR.position.y, T2=-J_.anR.position.y;
+const chestTop=J_.neck.position.y;
+const hipY=J_.pelvis.position.y;
+const ankleH=hipY-T1-T2;
+
+// 2関節の逆運動学（親の座標で目標Tとひざ・ひじの向きPを与える）。sign=-1:ひじ（前に曲がる） +1:ひざ（後ろに曲がる）
+function solve2(j1,j2,T,P,A,B,sign){
+  const S=j1.position.clone();
+  const d=T.clone().sub(S); const R=(A+B), raw=d.length(), k0=0.99*R, sp=0.0095*R; // 伸びきる手前でやわらかく止める（ひじ・ひざの急な振れを防ぐ）
+  const len=raw<k0?raw:k0+sp*(1-Math.exp(-(raw-k0)/sp)); d.setLength(Math.max(len,Math.abs(A-B)*1.01));
+  const l=d.length(), dirT=d.clone().normalize();
+  const a=Math.acos(Math.min(1,Math.max(-1,(A*A+l*l-B*B)/(2*A*l))));
+  const pole=P.clone().sub(dirT.clone().multiplyScalar(P.dot(dirT))).normalize();
+  const dirU=dirT.clone().multiplyScalar(Math.cos(a)).add(pole.clone().multiplyScalar(Math.sin(a))).normalize();
+  const E=S.clone().add(dirU.clone().multiplyScalar(A));
+  const dirF=S.clone().add(d).sub(E).normalize();
+  const Y=dirU.clone().negate();
+  let Z=dirF.clone().sub(dirU.clone().multiplyScalar(dirF.dot(dirU)));
+  if(Z.lengthSq()<1e-8) Z=pole.clone().multiplyScalar(-sign);
+  Z.normalize(); if(sign>0) Z.negate();
+  const X=new THREE.Vector3().crossVectors(Y,Z).normalize();
+  j1.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X,Y,Z));
+  const bend=Math.acos(Math.min(1,Math.max(-1,dirU.dot(dirF))));
+  j2.rotation.set(sign*bend,0,0);
+}
+const tmpQ=new THREE.Quaternion();
+function setWorldQuat(obj,q){obj.parent.updateMatrixWorld(true);obj.parent.getWorldQuaternion(tmpQ);obj.quaternion.copy(tmpQ.invert().multiply(q));}
+function quatFrom(f,n){ // 指の向きf、手のひらの向きn から姿勢
+  const Y=f.clone().normalize().negate(); let Z=n.clone().sub(Y.clone().multiplyScalar(n.dot(Y))).normalize();
+  const X=new THREE.Vector3().crossVectors(Y,Z).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X,Y,Z));
+}
+const FLOOR=0;
+// ボール（直径約24cm）
+const BR=0.12;
+const ball=new THREE.Group(); scene.add(ball);
+ball.add(new THREE.Mesh(new THREE.SphereGeometry(BR,24,16),M(css('--ball'))));
+const seamM=new THREE.MeshBasicMaterial({color:0x2a1a10});
+[[0,0],[0,Math.PI/2],[Math.PI/2,0]].forEach(([rx,ry])=>{const t=new THREE.Mesh(new THREE.TorusGeometry(BR*1.003,0.004,6,40),seamM);t.rotation.set(rx,ry,0);ball.add(t);});
+const ballShadow=new THREE.Mesh(new THREE.CircleGeometry(BR,20),shadowM()); ballShadow.rotation.x=-Math.PI/2; scene.add(ballShadow);
+
+// ---- 動きのデータ（秒。手本動画 DIAMOND BASKETBALL SCHOOL「チェストパス」0:48.9〜 を1/30秒ごとに読んだ時間配分）
+// 接点：両足（床）と、両手（ボール）。ボールの通り道を置き、手はボールの表面に、体はそこから計算する
+const DUR=2.6, REL=1.37;
+const TR={
+ pel:[ // 骨盤 [x, 高さ, 前後z]（大まかな道筋）
+  [0,[0,hipY-.02,0]],[.30,[0,hipY-.03,0]],[.50,[0,hipY-.12,.24]],[.75,[0,hipY-.20,.30]],[1.10,[0,hipY-.20,.32]],[1.30,[0,hipY-.17,.38]],[1.50,[0,hipY-.11,.48]],[1.80,[0,hipY-.10,.50]],[2.6,[0,hipY-.10,.50]]],
+ tor:[ // 骨盤・腹・胸の前傾（度）
+  [0,[0,3,0]],[.30,[0,4,0]],[.55,[10,15,8]],[.85,[16,24,12]],[1.15,[16,24,12]],[1.35,[10,13,6]],[1.50,[0,0,-2]],[1.80,[-3,-4,-3]],[2.6,[-3,-4,-3]]],
+ ball:[ // ボールの中心（世界の座標）。放した後は手の後追いにだけ使う
+  [0,[0,1.08,.30]],[.30,[0,1.07,.31]],[.60,[0,.93,.42]],[.85,[0,.84,.48]],[1.15,[0,.83,.50]],[1.25,[0,.91,.66]],[1.31,[0,1.0,.88]],[1.37,[0,1.05,1.10]],[1.47,[0,1.10,1.30]],[2.6,[0,1.10,1.30]]],
+ hand:[ // 放した後の手首（胸の座標：高さは胸の高さ比、前、左右）
+  [0,[1.15,.72,.11]],[1.42,[1.15,.72,.11]],[1.75,[1.45,.62,.16]],[2.6,[1.45,.62,.16]]],
+ legL:[ // 踏み出す左脚の空中の向き（骨盤の座標）
+  [0,[0,-1,0]],[.30,[0,-1,0]],[.40,[.05,-.85,.5]],[.52,[.05,-.8,.6]],[2.6,[.05,-.8,.6]]],
+ heelR:[ // 後ろ足のかかと上げ（度）
+  [0,[0]],[.45,[5]],[.70,[25]],[1.20,[35]],[1.50,[55]],[1.80,[50]],[2.6,[50]]],
+};
+const CON={
+ footR:{p:v3(-.09,0,0), on:[[-1,9]]},
+ footL:{p:v3(.09,0,0), on:[[-1,.30],[.52,9]], p2:v3(.09,0,.72)},
+};
+function conPos(c,i){ return i===0?c.p:(c.pm&&i===1?c.pm:(c.p2||c.p)); }
+function contact(c,t){ // 重み0〜1と、その位置。つく直前は減速しながら近づき、離れる時はゆっくり離れる
+  const n=c.on.length;
+  for(let i=0;i<n;i++){const [a,b]=c.on[i];
+    const prevB=i>0?c.on[i-1][1]:-9, nextA=i<n-1?c.on[i+1][0]:99;
+    const A=Math.min(0.2,(a-prevB)/2), R=Math.min(0.2,(nextA-b)/2);
+    if(t>=a&&t<=b) return [1,conPos(c,i)];
+    if(t>a-A&&t<a){const u=(t-(a-A))/A; return [u*u*(3-2*u),conPos(c,i)];}
+    if(t>b&&t<b+R){const u=1-(t-b)/R; return [u*u*(3-2*u),conPos(c,i)];}
+  }
+  return [0,null];
+}
+function track(keys,t){
+  let i=0; while(i<keys.length-2&&t>=keys[i+1][0]) i++;
+  const k0=keys[Math.max(0,i-1)],k1=keys[i],k2=keys[i+1],k3=keys[Math.min(keys.length-1,i+2)];
+  const dt=k2[0]-k1[0], u=Math.min(1,Math.max(0,(t-k1[0])/dt)), u2=u*u,u3=u2*u;
+  const dm=(k1[0]-k0[0])||dt, dp=(k3[0]-k2[0])||dt;
+  return k1[1].map((_,n)=>{
+    const m1=(k2[1][n]-k0[1][n])/(dt+dm)*dt*0.9, m2=(k3[1][n]-k1[1][n])/(dt+dp)*dt*0.9;
+    return (2*u3-3*u2+1)*k1[1][n]+(u3-2*u2+u)*m1+(-2*u3+3*u2)*k2[1][n]+(u3-u2)*m2;});
+}
+const SM={}; const SMHZ=120;
+function smoothTrack(name){
+  const keys=TR[name], N=Math.ceil(DUR*SMHZ)+1, raw=[];
+  for(let i=0;i<N;i++) raw.push(track(keys,i/SMHZ));
+  const sig=5, K=[]; for(let k=-15;k<=15;k++) K.push(Math.exp(-k*k/(2*sig*sig)));
+  const out=raw.map((_,i)=>{const acc=raw[0].map(()=>0); let ws=0;
+    K.forEach((w,j)=>{const ii=Math.min(N-1,Math.max(0,i+j-15)); raw[ii].forEach((v,n)=>acc[n]+=v*w); ws+=w;});
+    return acc.map(v=>v/ws);});
+  SM[name]=out;
+}
+Object.keys(TR).forEach(smoothTrack);
+function trk(name,t){const a=SM[name], x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)), i=Math.floor(x), f=x-i;
+  return a[i].map((v,n)=>v+(a[i+1][n]-v)*f);}
+// 手の向き（指の向きf・手のひらの向きn、右手。左手は左右反転）。手本動画のコマから読み取り
+const ORI={
+ low:  [v3(.1,-.3,.95), v3(1,0,0)],        // おなかの前：ボールの横を持つ
+ cock: [v3(.15,.95,.15),v3(.55,0,.85)],    // 手首を後ろに折る：手のひらでボールの後ろを支え、親指どうしで三角形
+ rel:  [v3(0,.7,.7),    v3(.25,-.6,.75)],  // 放す瞬間：指先にボールが残る
+ snap: [v3(-.3,-.5,.8), v3(-.85,.1,-.2)],  // スナップ：手首を返し、手のひらは外、親指は下
+ relax:[v3(-.2,.35,.9), v3(-.75,.1,.3)],   // 力を抜く：指は相手の方、手のひらは外向きのまま
+};
+const QO={R:{},L:{}};
+for(const k in ORI){const [f,n]=ORI[k];QO.R[k]=quatFrom(f,n);QO.L[k]=quatFrom(v3(-f.x,f.y,f.z),v3(-n.x,n.y,n.z));}
+const WR=[[0,'cock'],[.30,'cock'],[.70,'low'],[1.20,'low'],[1.28,'cock'],[1.34,'cock'],[1.37,'rel'],[1.43,'snap'],[1.50,'snap'],[1.72,'relax'],[2.6,'relax']];
+function wristQ(sd,t){
+  let i=0; while(i<WR.length-2&&t>=WR[i+1][0]) i++;
+  const a=WR[i],b=WR[i+1]; let u=Math.min(1,Math.max(0,(t-a[0])/(b[0]-a[0]))); u=u*u*(3-2*u);
+  return QO[sd][a[1]].clone().slerp(QO[sd][b[1]],u);
+}
+// 指の形（度）：curl=曲げ, spread=開き, thumb=親指の開き
+const HANDF={low:{curl:25,spread:6,thumb:40},cock:{curl:18,spread:9,thumb:55},rel:{curl:6,spread:10,thumb:50},
+             snap:{curl:12,spread:12,thumb:30},relax:{curl:18,spread:10,thumb:35}};
+function fingerShape(sd,t){
+  let i=0; while(i<WR.length-2&&t>=WR[i+1][0]) i++;
+  const a=WR[i],b=WR[i+1]; let u=Math.min(1,Math.max(0,(t-a[0])/(b[0]-a[0]))); u=u*u*(3-2*u);
+  const A=HANDF[a[1]],B=HANDF[b[1]], m=k=>A[k]+(B[k]-A[k])*u;
+  const curl=m('curl')*D, spread=m('spread')*D, th=m('thumb')*D;
+  fingers[sd].forEach(f=>{f.base.rotation.set(-curl,0,f.spread*spread*0.6); f.j2.rotation.set(-curl*1.2,0,0);});
+  const T=fingers[sd].thumb; T.tb.rotation.set(-0.5,0,T.sx*th); T.tj.rotation.set(-curl*0.8,0,0);
+}
+const PHASES=[
+ {t:0.00,name:'構え',tip:'手のひらで三角形を作ってボールを持つ（親指と人差し指で三角形）。ボールは胸の前、ひじは下。'},
+ {t:0.30,name:'下げて踏み出す',tip:'ボールをおなかの高さまで下げ、相手に向かって一歩踏み出す。後ろ足のかかとが上がる。'},
+ {t:1.20,name:'押し出す',tip:'脚と腰が先に前へ出て、胴が起き、最後に腕が伸びる。手首は後ろに折ったまま、手のひらでボールの後ろを押す。'},
+ {t:1.37,name:'放す',tip:'腕が伸びきる直前に、手首を一気に返して（スナップ）放す。人差し指は相手へ、親指は下へ。'},
+ {t:1.43,name:'フォロースルー',tip:'腕は斜め上へ伸び、手のひらは外向き。後ろ足は足首が伸びて、つま先だけが床に残る。'},
+];
+// ---- 解く
+let LEAN=null; const ARM=L1+L2;
+function ballRaw(t){ return v3(...track(TR.ball,Math.min(t,TR.ball[TR.ball.length-1][0]))); }
+let BOFF=null; // 胴にめり込まないための押し出し量（全時間で求めてならす）
+function ballAt(t){ const b=ballRaw(t); if(!BOFF) return b;
+  const x=Math.min(BOFF.length-1.001,Math.max(0,t*SMHZ)),i=Math.floor(x),f=x-i; return b.add(v3(...BOFF[i].map((v,n)=>v+(BOFF[i+1][n]-v)*f))); }
+const TORSO=[]; [J_.pelvis,J_.spine,J_.spine2,J_.chest,J_.neck].forEach(j=>j.children.forEach(o=>{if(o.isMesh&&!o.userData.wireOnly)TORSO.push(o);}));
+function torsoPush(B){ // ボールの中心からの最深のめり込み（体の前向きに押し出す量）
+  let mx=0; const v=new THREE.Vector3();
+  TORSO.forEach(o=>{const pos=o.geometry.attributes.position; for(let i=0;i<pos.count;i++){v.fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld); const d=BR+0.01-v.distanceTo(B); if(d>mx)mx=d;}});
+  return mx; }
+function attachedWrist(sd,t,B){ // 手のひらの面がボールの表面に来る手首の位置
+  const q=wristQ(sd,Math.min(t,REL)), n=v3(0,0,1).applyQuaternion(q); // 放した後は手首の返しで手首の位置を動かさない
+  const palm=B.clone().sub(n.multiplyScalar(BR+0.012));
+  return palm.sub(palmC[sd].position.clone().applyQuaternion(q));
+}
+function resetGirdle(){['R','L'].forEach(sd=>{J_['cl'+sd].rotation.set(0,0,0);J_['fr'+sd].quaternion.set(0,0,0,1);});}
+function bodyPose(t,lean){
+  resetGirdle();
+  const [px,py,pz]=trk('pel',t), [tp,ts,tc]=trk('tor',t);
+  body.quaternion.set(0,0,0,1); body.position.set(px,py-hipY,pz+lean);
+  J_.pelvis.rotation.set(tp*D,0,0); J_.spine.rotation.set(ts*D,0,0); J_.chest.rotation.set(tc*D,0,0);
+  {const c=-(tp+ts+tc)*0.6, nk=Math.max(-28,c); J_.neck.rotation.set(nk*D,0,0); J_.head.rotation.set((c-nk)*D,0,0);} // 首で足りない分は頭で
+  fig.root.updateMatrixWorld(true);
+}
+// 条件1：ボールは胴の表面より外（めり込む分だけ胸の前方へ押し出す）
+function precomputeBallOffset(){
+  const N=Math.ceil(DUR*SMHZ)+1, raw=[];
+  for(let i=0;i<N;i++){const t=i/SMHZ; const off=v3(0,0,0);
+    if(t<REL+0.1){ bodyPose(t,LEAN?leanAt(t):0); const fw=v3(0,0,1).transformDirection(J_.chest.matrixWorld);
+      for(let it=0;it<8;it++){const pen=torsoPush(ballRaw(t).add(off)); if(pen<=0.001) break; off.add(fw.clone().multiplyScalar(pen*0.8));} }
+    raw.push([off.x,off.y,off.z]); }
+  const sig=6,K=[];for(let j=-18;j<=18;j++)K.push(Math.exp(-j*j/(2*sig*sig)));
+  // ならすと押し出しが足りなくなる所があるので、前後の最大値をとってからならす
+  const mxd=raw.map((_,i)=>{let m=raw[i].slice();for(let j=-10;j<=10;j++){const r=raw[Math.min(N-1,Math.max(0,i+j))];if(r[2]>m[2])m=r.slice();}return m;});
+  BOFF=mxd.map((_,i)=>{const a=[0,0,0];let ws=0;K.forEach((w,j)=>{const ii=Math.min(N-1,Math.max(0,i+j-18));for(let n=0;n<3;n++)a[n]+=mxd[ii][n]*w;ws+=w;});return a.map(v=>v/ws);});
+}
+precomputeBallOffset();
+// 条件2：ボールを持っている間、腕が届かなければ腰を前へ運ぶ＝前の足への体重移動（量は全時間で求めてならす。最大15cm）
+(function precomputeLean(){
+  const N=Math.ceil(DUR*SMHZ)+1, raw=[];
+  for(let i=0;i<N;i++){const t=i/SMHZ; let lean=0;
+    if(t<REL+0.1){ const B=ballAt(t);
+      for(let it=0;it<8;it++){ bodyPose(t,lean); let e=0;
+        ['L','R'].forEach(sd=>{const S=new THREE.Vector3(); J_['sh'+sd].getWorldPosition(S); e=Math.max(e,S.distanceTo(attachedWrist(sd,t,B))-ARM*0.97);});
+        if(e<=0.002) break; lean=Math.min(0.15,lean+e*0.9); } }
+    raw.push([lean]); }
+  const sig=5,K=[];for(let j=-15;j<=15;j++)K.push(Math.exp(-j*j/(2*sig*sig)));
+  LEAN=raw.map((_,i)=>{let a=0,ws=0;K.forEach((w,j)=>{const ii=Math.min(N-1,Math.max(0,i+j-15));a+=raw[ii][0]*w;ws+=w;});return a/ws;});
+})();
+precomputeBallOffset();
+function leanAt(t){const x=Math.min(LEAN.length-1.001,Math.max(0,t*SMHZ)),i=Math.floor(x),f=x-i;return LEAN[i]+(LEAN[i+1]-LEAN[i])*f;}
+// 放した後の手首の軌道（胸の座標→世界）を先に計算してならす
+const FREE={R:[],L:[]};
+(function precomputeFree(){
+  const N=Math.ceil(DUR*SMHZ)+1;
+  for(let i=0;i<N;i++){const t=i/SMHZ; bodyPose(t,leanAt(t)); const [hy,hz,hx]=trk('hand',t);
+    [['R',-1],['L',1]].forEach(([sd,sx])=>{const w=J_.chest.localToWorld(v3(sx*hx,hy*chestTop,hz)); FREE[sd].push([w.x,w.y,w.z]);});}
+  const sig=8,K=[];for(let j=-24;j<=24;j++)K.push(Math.exp(-j*j/(2*sig*sig)));
+  ['R','L'].forEach(sd=>{const raw=FREE[sd].map(r=>r.slice());FREE[sd]=raw.map((_,i)=>{const a=[0,0,0];let ws=0;K.forEach((w,j)=>{const ii=Math.min(N-1,Math.max(0,i+j-24));for(let n=0;n<3;n++)a[n]+=raw[ii][n]*w;ws+=w;});return a.map(v=>v/ws);});});
+})();
+function freeAt(sd,t){const a=FREE[sd],x=Math.min(a.length-1.001,Math.max(0,t*SMHZ)),i=Math.floor(x),f=x-i;return v3(...a[i].map((v,n)=>v+(a[i+1][n]-v)*f));}
+const legLen=(T1+T2)*0.985;
+let headMesh=MQ.headMesh;
+let GAZE=null;
+function setPose(t){
+  bodyPose(t,leanAt(t));
+  // 脚：床の足は固定（後ろ足はつま先を軸にかかとを上げる）、踏み出す脚は空中の向き→着地
+  [['L',1,CON.footL],['R',-1,CON.footR]].forEach(([sd,sx,cn])=>{
+    const [w,cp]=contact(cn,t); const heel=sd==='R'?trk('heelR',t)[0]*D:0;
+    let target;
+    const d=trk('legL',t), free=J_.pelvis.localToWorld(J_['hp'+sd].position.clone().add(v3(sx*d[0],d[1],d[2]).normalize().multiplyScalar(legLen)));
+    if(w>0){const g=v3(cp.x,FLOOR+ankleH+Math.sin(heel)*MQ.dims.ball,cp.z+MQ.dims.ball*(1-Math.cos(heel))); target=sd==='R'?g:free.lerp(g,w);} else target=free;
+    let pole=v3(sx*0.1,0,1);
+    if(w>0.001){const pl=v3(0,0.25,1).normalize().transformDirection(new THREE.Matrix4().copy(J_.pelvis.matrixWorld).invert()); pole=pole.lerp(pl,w).normalize();}
+    solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(target),pole,T1,T2,1);
+    fig.root.updateMatrixWorld(true);
+    J_['an'+sd].quaternion.set(0,0,0,1);
+    if(w>0.001){const fq=new THREE.Quaternion(); J_['an'+sd].getWorldQuaternion(fq); setWorldQuat(J_['an'+sd],fq.slerp(new THREE.Quaternion().setFromAxisAngle(v3(1,0,0),heel),w));}
+    MQ.toeFlat(sd,w);
+  });
+  // 腕：放すまでは手のひらをボールの表面に、放した後は自由な軌道へゆっくり移る
+  const B=ballAt(t); let a=1; if(t>REL){const u=Math.min(1,(t-REL)/0.28); a=1-u*u*(3-2*u);}
+  [['R',-1],['L',1]].forEach(([sd,sx])=>{
+    const tgt=freeAt(sd,t).lerp(attachedWrist(sd,t,B),a);
+    MQ.armIK(sd,tgt,v3(sx*0.5,-1,-0.4)); // 鎖骨（肩の付け根）の連動を含む
+    fig.root.updateMatrixWorld(true);
+    setWorldQuat(J_['wr'+sd],wristQ(sd,t)); MQ.distributeTwist(sd); fingerShape(sd,t);
+  });
+  fig.root.updateMatrixWorld(true);
+  // 指：ボールに当たる指は、指先が表面に触れる所まで曲げを戻す
+  if(t<REL+0.03){ const tipPos=new THREE.Vector3(), lim=BR+0.007;
+    ['R','L'].forEach(sd=>{
+      fingers[sd].forEach(f=>{let c0=-f.base.rotation.x;
+        for(let it=0;it<14;it++){f.base.updateMatrixWorld(true);f.tip.getWorldPosition(tipPos); if(tipPos.distanceTo(B)>=lim) break; c0-=5*D; f.base.rotation.x=-c0; f.j2.rotation.x=-Math.max(0,c0)*1.2;}});
+      const T=fingers[sd].thumb; let tz=T.tb.rotation.x;
+      for(let it=0;it<14;it++){T.tb.updateMatrixWorld(true);T.tip.getWorldPosition(tipPos); if(tipPos.distanceTo(B)>=lim) break; tz+=5*D; T.tb.rotation.x=tz;}
+    });
+    fig.root.updateMatrixWorld(true); }
+  // 目線：手本どおり、ボールを下げている間も相手を見る（頭を半分向け、残りは目で）
+  GAZE=v3(0,1.36,7); MQ.aimHead(GAZE,0.5);
+  const c=new THREE.Vector3(); J_.pelvis.getWorldPosition(c); bodyShadow.position.set(c.x,0.002,c.z+0.08);
+  return B;
+}
+// ボールの飛び方：放す瞬間の通り道の速さ（手首のスナップぶん速める）
+const RV=ballAt(REL).sub(ballAt(REL-0.02)).multiplyScalar(1/0.02); RV.x=0; RV.y=Math.min(RV.y,0.25); RV.z=Math.max(RV.z*2.5,10);
+const RP=ballAt(REL);
+const DUR_S=DUR; const toInner=t=>t, toShown=t=>t;
+function frameAt(t){
+  const B=setPose(t);
+  if(t<REL){ ball.position.copy(B); ball.rotation.set(0,0,0); }
+  else { const dt=t-REL; ball.position.set(RP.x, RP.y+RV.y*dt-0.7*dt*dt, RP.z+RV.z*dt); ball.rotation.x=-dt*20; }
+  ball.visible=ball.position.z<60; ballShadow.position.set(ball.position.x,0.003,ball.position.z); ballShadow.visible=ball.visible;
+}
+// 再生
+let t=0, playing=false, speed=0.5, last=0, dirty=true;
+const seek=document.getElementById('seek'), playB=document.getElementById('play');
+const phName=document.getElementById('phName'), phTip=document.getElementById('phTip');
+function phaseIndex(t){const ti=toInner(t);let i=0;while(i<PHASES.length-1&&ti>=PHASES[i+1].t-0.005)i++;return i;}
+let shown=-1;
+function setT(nt){t=Math.max(0,Math.min(DUR_S,nt));frameAt(t);seek.value=Math.round(t/DUR_S*1000);
+  const i=phaseIndex(t); if(i!==shown){shown=i;phName.textContent=PHASES[i].name;phTip.textContent=PHASES[i].tip;
+    [...phaseRow.querySelectorAll('button')].forEach((b,k)=>b.setAttribute('aria-pressed',String(k===i)));}
+  dirty=true;}
+function setPlaying(p){playing=p;playB.textContent=p?'❚❚ 止める':'▶ 再生';if(p&&t>=DUR_S)setT(0);last=performance.now();}
+playB.onclick=()=>setPlaying(!playing);
+seek.oninput=()=>{setPlaying(false);setT(seek.value/1000*DUR_S);};
+const speedRow=document.getElementById('speeds');
+[[0.15,'とてもゆっくり'],[0.5,'ゆっくり'],[1,'実際の速さ'],[2,'はやく']].forEach(([v,n])=>{const b=document.createElement('button');b.textContent=n;b.id='sp'+v;
+  b.setAttribute('aria-pressed',String(v===speed));b.onclick=()=>{speed=v;[...speedRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));};speedRow.appendChild(b);});
+const phaseRow=document.getElementById('phases');
+PHASES.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.name;b.id='ph'+i;b.onclick=()=>{setPlaying(false);setT(toShown(p.t)+0.001);};phaseRow.appendChild(b);});
+
+let az=1.15, el=0.1;
+const viewRow=document.getElementById('views');
+[['手本と同じ向き',1.15,0.1],['横から',Math.PI/2,0.05],['正面',0,0.08],['うしろ',Math.PI,0.15],['上から',-0.4,1.2]].forEach(([n,a,e])=>{
+  const b=document.createElement('button');b.textContent=n;b.onclick=()=>{az=a;el=e;dirty=true;};viewRow.appendChild(b);});
+const skinRow=document.getElementById('skins');
+[['doll','なめらか'],['wire','針金（透けて奥が見える）']].forEach(([k,n],i)=>{const b=document.createElement('button');b.textContent=n;b.id='skin-'+k;
+  b.setAttribute('aria-pressed',String(i===0));b.onclick=()=>{MQ.setSkin(k);[...skinRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));dirty=true;};skinRow.appendChild(b);});
+let zoom=1;
+function setZoom(z){zoom=Math.max(0.25,Math.min(2.5,z));dirty=true;}
+const zoomRow=document.getElementById('zooms');
+[['＋ 大きく',1/1.4],['− 小さく',1.4],['もとの大きさ',0]].forEach(([n,f])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>setZoom(f?zoom*f:1);zoomRow.appendChild(b);});
+stage.addEventListener('wheel',e=>{e.preventDefault();setZoom(zoom*Math.exp(e.deltaY*0.001));},{passive:false});
+const pts=new Map(); let pinch0=0, zoom0=1;
+let drag=null;
+stage.addEventListener('pointerdown',e=>{pts.set(e.pointerId,{x:e.clientX,y:e.clientY});stage.setPointerCapture(e.pointerId);
+  if(pts.size===2){const [a,b]=[...pts.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);zoom0=zoom;drag=null;} else drag={x:e.clientX,y:e.clientY};});
+stage.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===2&&pinch0){const [a,b]=[...pts.values()];setZoom(zoom0*pinch0/Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)));}});
+stage.addEventListener('pointermove',e=>{if(!drag)return;az-=(e.clientX-drag.x)*0.01;el=Math.max(-0.1,Math.min(1.3,el+(e.clientY-drag.y)*0.006));drag={x:e.clientX,y:e.clientY};dirty=true;});
+['pointerup','pointercancel'].forEach(ev=>stage.addEventListener(ev,e=>{pts.delete(e.pointerId);if(pts.size<2)pinch0=0;drag=null;}));
+
+let W=0,Hh=0;
+function resize(){W=stage.clientWidth;Hh=stage.clientHeight;renderer.setSize(W,Hh,false);dirty=true;}
+new ResizeObserver(resize).observe(stage);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>dirty=true);
+const fpCam=new THREE.PerspectiveCamera(70,1,0.03,60); let fpMode='small';
+const fpRow=document.getElementById('fpv');
+[['small','小窓で見る'],['large','大きく見る'],['off','見ない']].forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;b.id='fp-'+k;
+  b.setAttribute('aria-pressed',String(k===fpMode));b.onclick=()=>{fpMode=k;[...fpRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));dirty=true;};fpRow.appendChild(b);});
+function renderViews(){ // 全体の様子と、本人の目線（小窓または大きく）
+  renderer.setScissorTest(true);
+  const bg=new THREE.Color(css('--stage'));
+  const drawFP=(x,y,w,h)=>{fpCam.aspect=w/h; MQ.eyeCamera(fpCam,GAZE); MQ.showHead(false); renderer.setViewport(x,y,w,h); renderer.setScissor(x,y,w,h); renderer.setClearColor(bg); renderer.clear(); renderer.render(scene,fpCam); MQ.showHead(true);};
+  if(fpMode==='large'){ drawFP(0,0,W,Hh); }
+  else { renderer.setViewport(0,0,W,Hh); renderer.setScissor(0,0,W,Hh); renderer.setClearColor(bg); renderer.render(scene,cam);
+    if(fpMode==='small'){ const w=Math.round(Math.min(W*0.38,320)), h=Math.round(w*0.66), x=W-w-8, y=8;
+      renderer.setScissor(x-3,y-3,w+6,h+6); renderer.setClearColor(new THREE.Color('#ffffff')); renderer.clear(); drawFP(x,y,w,h); } }
+  renderer.setScissorTest(false);
+}
+function frame(now){
+  if(playing){const dt=(now-last)/1000;last=now;setT(t+dt*speed);if(t>=DUR_S)setPlaying(false);}
+  if(dirty&&W){dirty=false;
+    const dist=3.7*zoom; let cy=0.75, tz=0.55, tx=0;
+    if(zoom<0.8){ // 近づくほど、注目点を体の中心から手元へ寄せる
+      const hp=new THREE.Vector3(),q=new THREE.Vector3();handC.R.getWorldPosition(hp);handC.L.getWorldPosition(q);hp.add(q).multiplyScalar(.5);
+      const k=Math.min(1,(0.8-zoom)/0.45); cy=cy+(hp.y-cy)*k; tz=tz+(hp.z-tz)*k; }
+    cam.aspect=W/Hh;cam.position.set(tx+Math.sin(az)*Math.cos(el)*dist,cy+Math.sin(el)*dist,tz+Math.cos(az)*Math.cos(el)*dist);
+    cam.lookAt(tx,cy,tz);cam.updateProjectionMatrix();
+    renderer.setClearColor(new THREE.Color(css('--stage')));renderViews();}
+  requestAnimationFrame(frame);
+}
+// 検証用（tools/verify/check.js が使う）
+window.__motion={rom:MQ.ROM,DUR,setPose:t=>setPose(t),J:J_,headMesh,armLen:L1+L2,legLen:T1+T2,
+  contacts:[['footL','anL','hpL'],['footR','anR','hpR']].map(([c,j,s])=>({name:c,joint:j,root:s,reach:T1+T2,
+    at:t=>{const [w,cp]=contact(CON[c],t);if(!(w>0))return null;const h=c==='footR'?trk('heelR',t)[0]*D:0;return {w,x:cp.x,y:FLOOR+ankleH+Math.sin(h)*MQ.dims.ball,z:cp.z+MQ.dims.ball*(1-Math.cos(h))};}})),
+  support:()=>[]};
+resize(); setT(0); requestAnimationFrame(frame);
+})();
+</script>
