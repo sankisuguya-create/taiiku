@@ -408,6 +408,11 @@ const TECHS={
           [0.42,'左足を前へ出す','もう一度右足で跳び、左足を前へ振り出す（キック）。かかとは床につけない。'],
           [0.84,'入れかえて左足で跳ぶ','空中で足を入れかえ、左足で跳ぶ。右足を後ろへ引く。'],
           [1.26,'右足を前へ出す','左足でもう一度跳び、右足を前へ振り出す。1歩に縄1回。']]},
+ kousa:{name:'交差跳び', P:0.56, Tc:0.24, turns:1, be:0.05, r:0.025, hMin:12, hLift:32, tuck:0.00, lean:6, cross:true, rad:1.20, crossAt:[0.22,0.14,0.36,0.11,0.05],
+  phases:[[0,'着地','つま先で着く。腕は体の前で交差したまま（右腕が上）。'],
+          [0.07,'縄が頭の上','腕を深く交差させ、手は反対側の腰の外まで出す。縄の輪が体より大きくなる。'],
+          [0.20,'踏み切り','交差したまま、手首で小さく回し続ける。ひじは外へ張らない。'],
+          [0.33,'縄が足の下','縄が交差した輪のまま足の下を通る。腕の交差をほどかない。']]},
  niju:{name:'二重跳び', P:0.62, Tc:0.18, turns:2, be:0.02, r:0.030, hMin:8, hLift:36, tuck:0.06, lean:6,
   phases:[[0,'着地','つま先で着き、すぐ次の踏み切りへ。かかとを上げたまま、ひざで少しだけ受ける。'],
           [0.12,'踏み切り（強く）','前回しより高く跳ぶ（約24cm）。跳び上がるのと同時に手首を速く回す。'],
@@ -435,6 +440,8 @@ const HANDLE={len:0.12, rad:0.010, tip:0.072}; // 長さ・太さ・中心から
 let HT=null; // 記録：フレームごとの [a, r, θ]（θ：持ち手が縄に引かれて傾く角度）
 function wristAR(sd,t,a,r){const sx=sd==='R'?-1:1;
   // 円は体の横から見て、上で前へ・下で後ろへ（前回しの縄と同じ向き）。腕は体と一緒に上下し、空中では少し遅れて下がる
+  if(TECH.cross){ const C=TECH.crossAt, up=sd==='R'?1:0; // 交差跳び：右手は体の左側、左手は右側。右の前腕が上（右手首を少し高く・前に）
+    return v3(-sx*C[0], pelY(t)+C[1]+up*C[3]-0.02*airK(t)+r*Math.cos(a), C[2]+up*C[4]+r*Math.sin(a)); }
   // 胴が前後・左右に傾いて肩が動いた分だけ、手首も一緒に動かす（ひじの曲げ伸ばしが目立たない）
   const kp=kickPitch(t)*D, sw=bodySway(t), rl=-sw/0.02*SWAYROLL*D, SH=0.41;
   return v3(sx*HAND.x+sw-SH*Math.sin(rl), pelY(t)+HAND.dy-0.02*airK(t)-SH*(1-Math.cos(kp))+r*Math.cos(a), HAND.z+0.035*0+SH*Math.sin(kp)+r*Math.sin(a)); }
@@ -453,7 +460,7 @@ const QBASE={};
 const SUPI=35*D, GRIPB=40*D, THZ=0.014; // 持ち手は手のひらの付け根から人差し指の付け根へ斜めに通る（指の向きから親指側へ40°）
 const HG={}; // 手の座標での持ち手：C＝中心、DL＝付け根（縄が出る端）への向き
 ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; HG[sd]={C:v3(sx*0.01,-0.029,0.016), DL:v3(sx*Math.sin(GRIPB),-Math.cos(GRIPB),0.12).normalize()};});
-const DW=sd=>{const sx=sd==='R'?-1:1; return v3(sx*0.5,-0.75,0.40).normalize();}; // 付け根の向き（世界）：地面側・斜め外・少し前
+const DW=sd=>{const sx=(sd==='R'?-1:1)*(TECH.cross?-1:1); return v3(sx*0.5,-0.75,0.40).normalize();}; /* 交差跳びは手が反対側にあるので、外の向きも反対 */ // 付け根の向き（世界）：地面側・斜め外・少し前
 (function(){ // 握り：親指は持ち手の上に乗り、付け根の方を向く。手のひらは内向き
   ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; const d=DW(sd), m=v3(-sx,0,0);
     const Zw=m.sub(d.clone().multiplyScalar(m.dot(d))).normalize(); let u=new THREE.Vector3().crossVectors(Zw,d); if(u.y<0) u.negate();
@@ -483,8 +490,8 @@ function targetBottoms(){const mid=TC+TF/2-(TECH.be??0); if(TECH.turns===1) retu
 let SIMLOG=null;
 function ropeShape(t,psi,A,B,out){ const [cy,cz]=[pelY(t)+HAND.dy-0.02*airK(t), HAND.z];
   for(let i=0;i<RN;i++){const s=i/(RN-1), w=Math.pow(Math.sin(Math.PI*s),Q), ang=psi+BOW*(1-Math.sin(Math.PI*s));
-    const bx=A.x+(B.x-A.x)*s+OUTW*Math.sin(2*Math.PI*s), by=A.y+(B.y-A.y)*s, bz=A.z+(B.z-A.z)*s;
-    let y=by+RAD*w*Math.cos(ang), z=bz+RAD*w*Math.sin(ang);
+    const bx=A.x+(B.x-A.x)*s+OUTW*Math.sign(A.x-B.x)*Math.sin(2*Math.PI*s), by=A.y+(B.y-A.y)*s, bz=A.z+(B.z-A.z)*s;
+    const RR=TECH.rad||RAD; let y=by+RR*w*Math.cos(ang), z=bz+RR*w*Math.sin(ang); /* 交差跳びは手が前に出るので輪を大きく（足の下で床を滑る） */
     if(y<RRAD) y=RRAD; out[i*3]=bx; out[i*3+1]=y; out[i*3+2]=z;}
   return out; }
 function simulate(){ // 1周期を記録する（形を決めて描くので、計算はすぐ終わる）
@@ -624,13 +631,13 @@ function kickPitch(t){ if(TECH.steps!==4) return 0; // 足の振りと同じ時�
 // 腕と手：前腕の向きを基準にする。前腕のひねり（もとの量＋手首の円と同じ周期の小さな往復）と、手首の小さな曲げ（反り・小指側への曲げ）で持ち手の向きを作る
 const ELBIN=0.25, GL=0, TWX=60, WL=10; /* WL：手首の曲げの上限（度） */ const WP={}; // 手ごとの [ひねり, 反り, 横曲げ, ひねりの向き]（solveGrip で決める）
 function poseArm(sd,t,a,r,th){ const sx=sd==='R'?-1:1, w=WP[sd];
-  MQ.armIK(sd,wristAR(sd,t,a,r),v3(-sx*ELBIN,-0.2,-1)); // ひじは胴に寄せ（内へ曲がる）、前腕を外へ開く
+  MQ.armIK(sd,wristAR(sd,t,a,r),TECH.cross?v3(sx*0.5,-0.7,-0.3):v3(-sx*ELBIN,-0.2,-1)); /* 交差跳びはひじを外・下へ */ // ひじは胴に寄せ（内へ曲がる）、前腕を外へ開く
   J_['fr'+sd].quaternion.setFromAxisAngle(v3(0,1,0),w.tw+w.sg*TWIST*Math.cos(a||0));
   J_['wr'+sd].rotation.set(w.ex+th,0,w.dv,'YXZ'); fig.root.updateMatrixWorld(true); }
 function handTip(sd){ return J_['wr'+sd].localToWorld(handleLocal(sd)); }
 function solveGrip(){ // 1) 前腕のひねり：前腕の内側（手のひら側＝前腕の座標の+Z）が正中線向き・やや上向きになる量。2) 手首の小さな曲げ（±25°）で付け根を地面側の斜め外へ
   bodyOnly(0);
-  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1, rom=MQ.ROM['fr'+sd].y, want=DW(sd), inner=v3(-sx,0.6,0).normalize(); let bt=null;
+  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1, rom=MQ.ROM['fr'+sd].y, want=DW(sd), inner=v3(-sx*(TECH.cross?-1:1),0.6,0).normalize(); let bt=null;
     for(let tw=rom[0]-TWX;tw<=rom[1]+TWX;tw+=2){ WP[sd]={tw:tw*D,ex:0,dv:0,sg:0}; poseArm(sd,0,Math.PI/2,TECH.r,0);
       const n=v3(0,0,1).transformDirection(J_['fr'+sd].matrixWorld); const c=-n.dot(inner); if(!bt||c<bt[0]) bt=[c,tw];}
     let best=null;
