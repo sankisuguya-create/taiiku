@@ -1,0 +1,694 @@
+<!-- 生成物：src.html と lib/ から tools/build.py で組み立て。直接直さない -->
+<title>縄跳びの動き</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+/* 配置：上に舞台、その下に「いまの局面とこつ」、再生バー、技・速さ・局面・表示・視点のボタン */
+:root{
+  --bg:#eef3f6; --fg:#1d2a33; --muted:#5b6b76; --panel:#ffffff; --line:#d3dde4;
+  --stage:#dfe8ee; --accent:#e0761c; --accent-fg:#ffffff;
+  --right:#1f4b99; --left:#9cc8f0; --joint:#e0761c; --skin:#e9c7a2; --shirt:#fbfcfd;
+  --rope:#c2255c; --grip:#f2c230; --trail:#e0761c;
+  --font:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141b20; --fg:#e6edf2; --muted:#9aabb6; --panel:#1d262d; --line:#2f3c46;
+  --stage:#22303a; --accent:#f08a3a; --accent-fg:#141b20; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141b20; --fg:#e6edf2; --muted:#9aabb6; --panel:#1d262d; --line:#2f3c46;
+  --stage:#22303a; --accent:#f08a3a; --accent-fg:#141b20; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+h1{font-size:1.25rem;margin:0}
+.stage{position:relative;width:100%;aspect-ratio:16/10;max-height:58vh;border-radius:12px;overflow:hidden;background:var(--stage);touch-action:none}
+.stage canvas{display:block;width:100%;height:100%}
+.busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;color:var(--fg);background:color-mix(in srgb,var(--stage) 70%,transparent)}
+.phase{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-height:4.2em}
+.phase h2{margin:0 0 2px;font-size:1.15rem}
+.phase p{margin:0;font-size:1rem;line-height:1.6}
+.bar{display:flex;gap:8px;align-items:center}
+.bar input[type=range]{flex:1;min-width:0;height:48px;accent-color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.label{font-size:.8rem;color:var(--muted);width:100%;margin:0}
+button{font:inherit;font-weight:700;min-height:48px;padding:0 16px;border-radius:10px;border:2px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#play{min-width:96px}
+.note{font-size:.78rem;color:var(--muted);margin:0;line-height:1.6}
+</style>
+<div class="wrap">
+  <h1>縄跳びの動き</h1>
+  <div class="stage" id="stage"><div class="busy" id="busy">縄の動きを計算しています…</div></div>
+  <div class="phase" aria-live="polite"><h2 id="phName">着地</h2><p id="phTip"></p></div>
+  <div class="bar"><button id="play">▶ 再生</button><input type="range" id="seek" min="0" max="1000" value="0" aria-label="再生位置"></div>
+  <div class="row" id="techs"><p class="label">技</p></div>
+  <div class="row" id="speeds"><p class="label">速さ</p></div>
+  <div class="row" id="phases"><p class="label">局面へとぶ</p></div>
+  <div class="row" id="shows"><p class="label">表示</p></div>
+  <div class="row" id="zooms"><p class="label">大きさ（2本指でつまんでも変えられます）</p></div>
+  <div class="row" id="skins"><p class="label">見た目</p></div>
+  <div class="row" id="views"><p class="label">見る向き（指でドラッグしても回せます）</p></div>
+  <p class="note">人形は人体寸法の実測比から作った中間案（約6頭身、身長約1.45m）。縄は長さ2.3m・重さ120gのひもを41個の点に分け、重さ・空気の抵抗・床との当たりを計算して動かしたもの（物理計算）。縄の形は計算の結果で、手で描いたものではありません（ただし回る速さだけは、人が手ごたえを感じて手首の加減で合わせる分を、補助の力で一定に保っています）。手首は「ひじを脇につけ、手首で小さな円を描く」動きを与え、持ち手は縄に引かれる向きへ傾けています。跳ぶ高さ・回数とこつ（頭を動かさない・速く回す・かかとを上げる）は二重跳びの練習動画の要点に合わせました。手首の角度そのものは動画から測れないため、推定です。</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const stage=document.getElementById('stage');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+stage.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff,0x8899aa,0.75));
+const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(2,4,3); scene.add(sun);
+const cam=new THREE.PerspectiveCamera(30,1.6,0.1,50);
+const M=c=>new THREE.MeshLambertMaterial({color:c});
+// ---- lib/mannequin.js ここから（tools/build.py が埋め込み。直す時は元のファイルを）
+// 模擬人形の組み立て（共通部品）。docs/mannequin.md が仕様。
+// 見た目は2種類を切り替える：'doll'（ドール型＝ボディくん型のなめらかな人体）／'wire'（針金型＝網目と断面の輪。透けて奥が見える）
+// 関節：pelvis spine spine2 chest neck head / clR shR elR wrR（左も同じ）/ hpR knR anR（左も同じ）
+//   spine＝腰椎、spine2＝下の胸椎、chest＝上の胸椎（3つで背中を反る・丸める）。clR/clL＝鎖骨（肩を引く・すくめる＝胸を張る）
+// 前は +Z、人形の右は −X。腕・脚は下（−Y）へ伸びる。各ページは //@include で埋め込む（tools/build.py）。
+function buildMannequin(THREE, css){
+  const H=1.6, HEADS=6, GIRTH=1.1;
+  // 体節の長さは身長比の実測値（Drillis & Contini）
+  const R={chin:0.870,shoulder:0.818,hipJ:0.530,knee:0.285,ankle:0.039,upperArm:0.186,forearm:0.146,hand:0.108,hipJW:0.10,footL:0.152};
+  // 周径から出した半径（身長比）。[位置t, 半径]。ふくらはぎ・太もも・上腕のふくらみを残す
+  const PROF={upper:[[0,.030],[.35,.029],[.8,.023],[1,.021]], fore:[[0,.023],[.25,.024],[.8,.017],[1,.015]],
+              thigh:[[0,.050],[.15,.052],[.6,.040],[1,.031]], shank:[[0,.031],[.3,.035],[.75,.022],[1,.019]]};
+  const hh=H/HEADS, s=(H-hh)/(R.chin*H), L=v=>v*H*s, G=v=>v*H*s*GIRTH;
+  const v3=(x,y,z)=>new THREE.Vector3(x,y,z);
+  // 見た目（役割ごとの材質）
+  const lam=c=>new THREE.MeshLambertMaterial({color:c});
+  const lam2=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
+  const wir=c=>new THREE.MeshBasicMaterial({color:c,wireframe:true,transparent:true,opacity:0.85});
+  const solid=c=>new THREE.MeshBasicMaterial({color:c});
+  const SKIN={
+    doll:{R:lam('#4f6f9a'),L:lam('#dce5ee'),T:lam('#c9d1da'),S:lam('#d4dbe2'),J:lam('#aeb8c3'),A:lam('#4a545e'),O:lam(css('--joint')||'#e0761c'),
+          BR:lam('#243f66'),BL:lam('#8fa6bf'),BS:lam('#8e9aa7'),G:lam('#7d8894'),P:lam('#e8c4a0')},   // P＝手のひらと指（肌色）   // B*＝腕の裏側（二の腕の後ろ・前腕と手の甲側）
+    wire:{R:wir('#1f4b99'),L:wir('#5fa8e6'),T:wir('#55636e'),S:wir('#55636e'),J:solid('#e0761c'),A:solid('#22303a'),O:solid('#e0761c'),BR:wir('#1f4b99'),BL:wir('#5fa8e6'),BS:wir('#55636e'),G:solid('#7d8894'),P:wir('#55636e')},
+  };
+  const root=new THREE.Group(), body=new THREE.Group(); root.add(body);
+  const J_={}, allMeshes=[];
+  const J=(p,name,x,y,z)=>{const g=new THREE.Group();g.position.set(x,y,z);p.add(g);if(name)J_[name]=g;return g;};
+  const mesh=(geo,role,p,x,y,z,opt)=>{const o=new THREE.Mesh(geo,SKIN.doll[role]);o.position.set(x||0,y||0,z||0);o.userData.role=role;
+    if(opt)Object.assign(o.userData,opt);p.add(o);allMeshes.push(o);return o;};
+  const ell=(p,rx,ry,rz,y,role,z)=>{const o=mesh(new THREE.SphereGeometry(1,20,14),role,p,0,y,z);o.scale.set(rx,ry,rz);return o;};
+  const ring=(p,r,y,role)=>{const o=mesh(new THREE.TorusGeometry(r,0.0025,4,24),role,p,0,y,0,{wireOnly:true});o.rotation.x=Math.PI/2;return o;};
+  const joint=(p,r)=>mesh(new THREE.SphereGeometry(r,14,10),'J',p);
+  function limb(p,len,prof,role){
+    const pts=prof.map(([t,r])=>[t,G(r)]);
+    const v=[new THREE.Vector2(0,0)]; pts.forEach(([t,r])=>v.push(new THREE.Vector2(r,-t*len))); v.push(new THREE.Vector2(0,-len));
+    v.reverse(); // 下から上の順にすると面が外を向く（逆だと内側が見えて透けて見える）
+    mesh(new THREE.LatheGeometry(v,18),role,p);
+    [.25,.5,.75].forEach(u=>{let r=pts[0][1];for(let i=1;i<pts.length;i++)if(pts[i][0]>=u){const [t0,a0]=pts[i-1],[t1,a1]=pts[i];r=a0+(a1-a0)*(u-t0)/(t1-t0);break;} ring(p,r,-u*len,role);});
+  }
+  function backHalf(p,len,prof,role){ // 体節の後ろ半分を、わずかに大きい半円の回転体で覆う
+    const v=[]; prof.forEach(([t,r])=>v.push(new THREE.Vector2(G(r)*1.012,-t*len))); v.reverse();
+    const g=new THREE.LatheGeometry(v,12,Math.PI/2,Math.PI);   // phi=π が −Z（後ろ）
+    mesh(g,role,p,0,0,0,{dollOnly:true});
+  }
+  const DEP=0.68;
+  function trunk(p,pts,role){ // pts: [y, 半幅(身長比)]。断面は前後に薄い楕円
+    const v=[new THREE.Vector2(0,pts[0][0])]; pts.forEach(([y,r])=>v.push(new THREE.Vector2(G(r),y))); v.push(new THREE.Vector2(0,pts[pts.length-1][0]));
+    const o=mesh(new THREE.LatheGeometry(v,20),role,p); o.scale.z=DEP; return o;
+  }
+  // ---- 骨格 ----
+  const hipY=L(R.hipJ), shY=L(R.shoulder), spineLen=(shY-hipY)*0.38, chestH=shY-hipY-L(0.05)-spineLen;
+  J(body,'pelvis',0,hipY,0);
+  J(J_.pelvis,'spine',0,L(0.05),0);          // 腰椎
+  J(J_.spine,'spine2',0,spineLen*0.5,0);     // 下の胸椎
+  J(J_.spine2,'chest',0,spineLen*0.5,0);     // 上の胸椎
+  const neckLen=L(R.chin-R.shoulder);
+  J(J_.chest,'neck',0,chestH,0); J(J_.neck,'head',0,neckLen*0.8,0);
+  // 胴（関節ごとに分け、重ねて継ぎ目を隠す。反る・丸めると背中がカーブする）
+  trunk(J_.pelvis,[[-L(.06),.071],[-L(.03),.095],[L(.03),.092],[L(.06),.074]],'T');
+  trunk(J_.spine,[[-spineLen*.05,.075],[spineLen*.3,.073],[spineLen*.58,.075]],'T');
+  trunk(J_.spine2,[[-spineLen*.06,.075],[spineLen*.3,.078],[spineLen*.58,.083]],'T');
+  trunk(J_.chest,[[-chestH*.05,.083],[chestH*.45,.097],[chestH*.85,.095],[chestH,.074],[chestH*1.08,.03]],'T');
+  [J_.spine,J_.spine2].forEach(j=>joint(j,G(.018)));
+  // 背中の印：肩甲骨のマーク。背中の面に貼った絵（左肩甲骨＝後ろから見て「」」、右肩甲骨＝その左右反転。内側の縦線＋下の横線、灰色）
+  // 胸の回転体と同じ形の薄い面（左右に分けて）に描く。腕を上げると絵が少し下がり、下の角が外へ回る（applyRhythm）
+  const scap={};
+  [['L',1],['R',-1]].forEach(([sd,sx])=>{ // sx=1：人形の左（+X）
+    const c=document.createElement('canvas'); c.width=128; c.height=256; const x=c.getContext('2d');
+    // u：左は外側→背骨、右は背骨→外側。縦線は背骨寄り、横線は下で外へ
+    const uIn=sx>0?0.82:0.18, uOut=sx>0?0.30:0.70, vTop=0.80, vBot=0.30, lw=10;
+    x.strokeStyle='#7d8894'; x.lineWidth=lw; x.lineCap='round'; x.beginPath();
+    x.moveTo(uIn*128,(1-vTop)*256); x.lineTo(uIn*128,(1-vBot)*256); x.lineTo(uOut*128,(1-vBot)*256); x.stroke();
+    const tex=new THREE.CanvasTexture(c); tex.center.set(uIn,vBot);
+    const pts=[[chestH*.12,.0855],[chestH*.45,.097],[chestH*.78,.0955]].map(([y,r])=>new THREE.Vector2(G(r)*1.03,y));
+    const phi0=sx>0?Math.PI/2+0.35:Math.PI, phiL=Math.PI/2-0.35;      // phi=π が背中の中央
+    const patch=new THREE.Mesh(new THREE.LatheGeometry(pts,16,phi0,phiL),new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
+    patch.scale.z=DEP; patch.userData.fixed=true; J_.chest.add(patch);   // 見た目の切り替えで材質を変えない
+    scap[sd]=tex;
+  });
+  // 首・頭（鼻で向きを示す）
+  mesh(new THREE.CylinderGeometry(G(.022),G(.026),neckLen,14),'S',J_.neck,0,neckLen/2);
+  joint(J_.neck,G(.016));
+  const headMesh=ell(J_.head,hh*0.37,hh*0.5,hh*0.43,hh*0.5,'S');
+  const nose=mesh(new THREE.ConeGeometry(hh*0.045,hh*0.1,10),'P',J_.head,0,hh*0.45,hh*0.45); nose.rotation.x=Math.PI/2;
+  { // 顔の正面の太字Tの肌色（目・鼻・口がある所）。頭の面に貼った絵
+    const c=document.createElement('canvas'); c.width=256; c.height=256; const x=c.getContext('2d');
+    x.fillStyle='#e8c4a0'; const r=18;
+    const rr=(X,Y,W,H)=>{x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+W,Y,X+W,Y+H,r);x.arcTo(X+W,Y+H,X,Y+H,r);x.arcTo(X,Y+H,X,Y,r);x.arcTo(X,Y,X+W,Y,r);x.fill();};
+    rr(28,40,200,62);   // 横の太い棒（両目の高さ）
+    rr(90,40,76,190);   // 縦の太い棒（鼻から口まで）
+    const tex=new THREE.CanvasTexture(c);
+    const g=new THREE.SphereGeometry(1.012,32,20,Math.PI/2-0.75,1.5,Math.PI*0.3,Math.PI*0.42);
+    const face=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
+    face.scale.copy(headMesh.scale); face.position.copy(headMesh.position); face.userData.fixed=true; J_.head.add(face);
+  }
+  [-1,1].forEach(x=>mesh(new THREE.SphereGeometry(hh*0.035,8,6),'A',J_.head,x*hh*0.14,hh*0.56,hh*0.39,{wireOnly:true}));
+  // ---- 手足 ----
+  const handC={}, palmC={}, fingers={R:[],L:[]};
+  const fseg=(len,r)=>{const g=new THREE.Group();mesh(new THREE.CylinderGeometry(r,r*0.9,len,6),'P',g,0,-len/2);mesh(new THREE.SphereGeometry(r*0.9,6,4),'P',g,0,-len);return g;};
+  [['R',-1],['L',1]].forEach(([k,sx])=>{
+    const role=k;
+    const shX=sx*(G(.095)+G(.012)), clX=sx*G(.02);
+    const cl=J(J_.chest,'cl'+k,clX,chestH*0.9,0);                         // 鎖骨（胸の上端の内側を支点に）
+    const sh=J(cl,'sh'+k,shX-clX,chestH*0.85-chestH*0.9,0); joint(sh,G(.03));
+    limb(sh,L(R.upperArm),PROF.upper,role); backHalf(sh,L(R.upperArm),PROF.upper,'B'+k);
+    const el=J(sh,'el'+k,0,-L(R.upperArm),0); joint(el,G(.024));
+    const fr=J(el,'fr'+k,0,0,0);                                            // 前腕のひねり（手のひらを上・下に向ける回転）
+    limb(fr,L(R.forearm),PROF.fore,role); backHalf(fr,L(R.forearm),PROF.fore,'B'+k);   // 前腕の裏（手の甲側）
+    const wr=J(fr,'wr'+k,0,-L(R.forearm),0); joint(wr,G(.0105)); // 手首の球は小さく（手のひらを隠さない）
+    // 手：手のひら＋指4本（各2節）＋親指（2節）
+    const pl=0.058, pw=0.06, pt=0.02; // 手のひらを少し長く
+    mesh(new THREE.BoxGeometry(pw,pl,pt),'P',wr,0,-pl/2);
+    mesh(new THREE.BoxGeometry(pw*1.01,pl*1.01,pt*0.35),'BS',wr,0,-pl/2,-pt*0.35,{dollOnly:true});   // 手の甲
+    { // 手のひらのしわの印：右手＝「て」、左手＝その左右反転（手のひら側から見て）。手のひらの面に貼った絵
+      const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d');
+      x.save(); if(k==='L'){x.translate(128,0);x.scale(-1,1);}
+      x.fillStyle='#6f7b88'; x.font='bold 112px "Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText('て',64,70); x.restore();
+      const pm=new THREE.Mesh(new THREE.PlaneGeometry(pw*0.95,pl*0.95),new THREE.MeshLambertMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false}));
+      pm.position.set(0,-pl/2,pt/2+0.0015); pm.rotation.z=Math.PI; pm.userData.fixed=true; wr.add(pm); // 指先が下なので絵を180°回して、指を上にして見た時に正しい向き
+    }
+    [[.021,.030,.020,.0058],[.007,.033,.022,.006],[-.007,.031,.021,.0058],[-.021,.024,.017,.0052]].forEach(([x,l1,l2,r],i)=>{
+      const base=new THREE.Group(); base.position.set(sx*x,-pl,0); wr.add(base);
+      const p1=fseg(l1,r); base.add(p1);
+      const j2=new THREE.Group(); j2.position.y=-l1; p1.add(j2); j2.add(fseg(l2,r*0.92));
+      const tip=new THREE.Object3D(); tip.position.y=-l2*0.95; j2.add(tip);
+      fingers[k].push({base,j2,tip,spread:(1.5-i)*sx});
+    });
+    const tb=new THREE.Group(); tb.position.set(sx*pw/2,-0.012,0.004); wr.add(tb);
+    const t1=fseg(0.026,0.0075); tb.add(t1);
+    const tj=new THREE.Group(); tj.position.y=-0.026; t1.add(tj); tj.add(fseg(0.022,0.0068));
+    const ttip=new THREE.Object3D(); ttip.position.y=-0.022; tj.add(ttip);
+    fingers[k].thumb={tb,tj,sx,tip:ttip};
+    const c=new THREE.Object3D(); c.position.y=-0.06; wr.add(c); handC[k]=c;
+    const pc=new THREE.Object3D(); pc.position.set(0,-0.03,pt/2); wr.add(pc); palmC[k]=pc;
+    // 脚
+    const hp=J(J_.pelvis,'hp'+k,sx*L(R.hipJW/2),0,0); joint(hp,G(.034));
+    limb(hp,hipY-L(R.knee),PROF.thigh,role);
+    const kn=J(hp,'kn'+k,0,-(hipY-L(R.knee)),0); joint(kn,G(.03));
+    limb(kn,L(R.knee-R.ankle),PROF.shank,role);
+    const an=J(kn,'an'+k,0,-L(R.knee-R.ankle),0); joint(an,G(.02));
+    // 足：かかと側とつま先に分け、母指球の位置につま先の関節
+    const fL=L(R.footL), ballZ=fL*0.55, fy=-L(R.ankle)*0.5;
+    const heel=mesh(new THREE.BoxGeometry(1,1,1),role,an,0,fy,(-0.2*fL+ballZ)/2); heel.scale.set(G(.034),L(R.ankle),ballZ+0.2*fL);
+    const to=J(an,'to'+k,0,-L(R.ankle),ballZ);                              // つま先（足の指の付け根）
+    const toe=mesh(new THREE.BoxGeometry(1,1,1),role,to,0,L(R.ankle)*0.42,(0.8*fL-ballZ)/2); toe.scale.set(G(.033),L(R.ankle)*0.84,0.8*fL-ballZ);
+    joint(to,G(.012)).position.y=L(R.ankle)*0.4;
+  });
+  // 指の部品にも役割を付ける（fsegで作った分）
+  root.traverse(o=>{if(o.isMesh&&!o.userData.role&&!o.userData.fixed){o.userData.role='S';allMeshes.push(o);}});
+  function setSkin(kind){
+    const sk=SKIN[kind]||SKIN.doll;
+    allMeshes.forEach(o=>{o.material=sk[o.userData.role]; o.visible=o.userData.wireOnly?kind==='wire':(o.userData.dollOnly?kind!=='wire':true);
+      if(o.userData.role==='J'){ if(!o.userData.s0)o.userData.s0=o.scale.x; o.scale.setScalar(o.userData.s0*(kind==='wire'?0.55:1)); } }); // 針金では関節を小さな点に
+  }
+  setSkin('doll');
+  const D=Math.PI/180;
+  // 関節の可動域（度、関節の局所の回転 YXZ）。x:前後に曲げる y:ひねる z:横に曲げる。正の向きは docs/mannequin.md
+  // 数値は一般的な可動域の参考値を、背骨は3つに分けた1つあたりに割った目安（根拠：一般値。個人差が大きい）
+  const ROM={
+    spine:{x:[-20,25],y:[-8,8],z:[-10,10]}, spine2:{x:[-12,18],y:[-12,12],z:[-10,10]}, chest:{x:[-12,15],y:[-15,15],z:[-10,10]},
+    neck:{x:[-30,30],y:[-45,45],z:[-25,25]}, head:{x:[-25,25],y:[-30,30],z:[-15,15]},
+    clR:{x:[-5,5],y:[-25,20],z:[-35,5]}, clL:{x:[-5,5],y:[-20,25],z:[-5,35]},
+    frR:{x:[0,0],y:[-90,90],z:[0,0]}, frL:{x:[0,0],y:[-90,90],z:[0,0]},
+    toR:{x:[-70,10],y:[0,0],z:[0,0]}, toL:{x:[-70,10],y:[0,0],z:[0,0]},
+    knR:{x:[0,150]}, knL:{x:[0,150]},
+  };
+  // 背骨3つへの配分（腰は少なめ、背中の上は多め）。x,y,z は背骨全体での角度（度）。範囲を超えた分は切る
+  const SPLIT={spine:[.35,.25,.25],spine2:[.3,.35,.35],chest:[.35,.4,.4]};
+  function bendSpine(x,y,z){ ['spine','spine2','chest'].forEach(n=>{const r=ROM[n],w=SPLIT[n],c=(v,[a,b])=>Math.max(a,Math.min(b,v));
+    J_[n].rotation.set(c(x*w[0],r.x)*D,c(y*w[1],r.y)*D,c(z*w[2],r.z)*D,'YXZ');}); }
+  // 2関節の逆運動学（親の座標で目標T・曲がる向きP）。sign=-1:ひじ +1:ひざ。伸びきる直前だけやわらかく止める
+  function solve2(j1,j2,T,P,A,B,sign){
+    const S=j1.position.clone();
+    const d=T.clone().sub(S); const Rr=(A+B), raw=d.length(), k0=0.99*Rr, sp=0.0095*Rr;
+    const len=raw<k0?raw:k0+sp*(1-Math.exp(-(raw-k0)/sp)); d.setLength(Math.max(len,Math.abs(A-B)*1.01));
+    const l=d.length(), dirT=d.clone().normalize();
+    const a=Math.acos(Math.min(1,Math.max(-1,(A*A+l*l-B*B)/(2*A*l))));
+    const pole=P.clone().sub(dirT.clone().multiplyScalar(P.dot(dirT))).normalize();
+    const dirU=dirT.clone().multiplyScalar(Math.cos(a)).add(pole.clone().multiplyScalar(Math.sin(a))).normalize();
+    const E=S.clone().add(dirU.clone().multiplyScalar(A));
+    const dirF=S.clone().add(d).sub(E).normalize();
+    const Y=dirU.clone().negate();
+    let Z=dirF.clone().sub(dirU.clone().multiplyScalar(dirF.dot(dirU)));
+    if(Z.lengthSq()<1e-8) Z=pole.clone().multiplyScalar(-sign);
+    Z.normalize(); if(sign>0) Z.negate();
+    const X=new THREE.Vector3().crossVectors(Y,Z).normalize();
+    j1.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X,Y,Z));
+    const bend=Math.acos(Math.min(1,Math.max(-1,dirU.dot(dirF))));
+    j2.rotation.set(sign*bend,0,0);
+  }
+  const ARM1=L(R.upperArm), ARM2=L(R.forearm);
+  // 肩甲上腕リズム：腕を横・上に上げた角度に合わせて鎖骨（肩の付け根）を上げる。腕の角度:肩の付け根の角度＝おおよそ2:1（Inman 1944。個人差あり）
+  function applyRhythm(sd){
+    const v=v3(0,-1,0).applyQuaternion(J_['sh'+sd].quaternion);           // 上腕の向き（鎖骨の座標）
+    const th=Math.acos(Math.max(-1,Math.min(1,-v.y)))/D;                     // 下に下ろした向きからの角度
+    const up=Math.max(0,Math.min(1,(th-30)/150))*28;                         // 30°を超えた分を、最大28°まで
+    const back=Math.max(0,Math.min(1,-v.z/0.8))*8;                           // 腕を後ろへ引くと少し寄せる
+    const sx=sd==='R'?-1:1, r=ROM['cl'+sd];
+    const c=(x,[a,b])=>Math.max(a,Math.min(b,x));
+    J_['cl'+sd].rotation.set(0,c(-sx*back,r.y)*D,c(sx*up,r.z)*D,'YXZ');
+    const k=up/28, tx=scap[sd]; tx.offset.set(0,0.12*k); tx.rotation=sx*k*18*D;   // 肩甲骨のマーク：絵を少し下げ、下の角を外へ回す
+  }
+  // 腕を世界の座標の目標へ（鎖骨の連動を含めて2回解く）。pole は鎖骨の座標での曲がる向き
+  function armIK(sd,target,pole){
+    J_['cl'+sd].rotation.set(0,0,0); J_['fr'+sd].quaternion.set(0,0,0,1);
+    for(let it=0;it<3;it++){ root.updateMatrixWorld(true);   // 解く→鎖骨を合わせる→解く→…（最後は解いて終える）
+      solve2(J_['sh'+sd],J_['el'+sd],J_['cl'+sd].worldToLocal(target.clone()),pole,ARM1,ARM2,-1);
+      if(it<2) applyRhythm(sd); }
+    root.updateMatrixWorld(true);
+  }
+  // 手首のひねりを前腕へ移す（手首に残すのは曲げと横への傾きだけ）。手首の向きを決めた後に呼ぶ
+  const qa=new THREE.Quaternion(), qb=new THREE.Quaternion();
+  function distributeTwist(sd){
+    const wr=J_['wr'+sd], fr=J_['fr'+sd];
+    const q=wr.quaternion; // 前腕の座標での手首の回転
+    const tw=new THREE.Quaternion(0,q.y,0,q.w); if(tw.lengthSq()<1e-9) return; tw.normalize(); // 軸Yまわりのひねり成分
+    let ang=2*Math.atan2(tw.y,tw.w); ang=Math.atan2(Math.sin(ang),Math.cos(ang));
+    const r=ROM['fr'+sd].y, a2=Math.max(r[0]*D,Math.min(r[1]*D,ang));
+    const qt=new THREE.Quaternion().setFromAxisAngle(v3(0,1,0),a2);
+    fr.quaternion.multiply(qt);                                // 前腕をひねる
+    wr.quaternion.premultiply(qt.clone().invert());            // 手首からひねりを抜く（世界での手の向きは同じ）
+    root.updateMatrixWorld(true);
+  }
+  // つま先を床に：足が傾いた分だけつま先の関節を反らせる（w=床についている重み）
+  function toeFlat(sd,w){
+    const an=J_['an'+sd]; an.updateMatrixWorld(true);
+    const f=v3(0,0,1).transformDirection(an.matrixWorld); const pitch=Math.asin(Math.max(-1,Math.min(1,-f.y)))/D; // つま先が下がる向きが正
+    const r=ROM['to'+sd].x; J_['to'+sd].rotation.set(Math.max(r[0],Math.min(r[1],-Math.max(0,pitch)*w))*D,0,0);
+  }
+  // 本人の目線：目の位置から、顔の向きへ。頭の部品は目線を描く間だけ隠す
+  const headParts=[]; J_.head.children.forEach(o=>{if(o.isMesh)headParts.push(o);});
+  const eye=new THREE.Object3D(); eye.position.set(0,hh*0.56,hh*0.3); J_.head.add(eye);
+  function eyeCamera(cam,target){
+    root.updateMatrixWorld(true);
+    const p=new THREE.Vector3(); eye.getWorldPosition(p);
+    const q=new THREE.Quaternion(); eye.getWorldQuaternion(q);
+    cam.position.copy(p); cam.up.copy(v3(0,1,0).applyQuaternion(q));
+    if(target) cam.lookAt(target);                                          // 目で目標を見る（頭が向ききらない分は目が動く）
+    else cam.lookAt(p.clone().add(v3(0,-0.25,1).normalize().applyQuaternion(q))); // 目標がなければ少し下（人の視線の目安）
+    cam.updateProjectionMatrix();
+  }
+  function aimHead(target,k){ // 目標の方へ頭を k の割合だけ向ける（残りは目で見る）。首・頭の可動域で止める
+    if(!target||k<=0) return;
+    root.updateMatrixWorld(true);
+    const p=new THREE.Vector3(); eye.getWorldPosition(p);
+    const q=new THREE.Quaternion(); J_.head.getWorldQuaternion(q);
+    const fwd=v3(0,-0.25,1).normalize().applyQuaternion(q), want=target.clone().sub(p).normalize();
+    const full=new THREE.Quaternion().setFromUnitVectors(fwd,want), part=new THREE.Quaternion().slerp(full,k*0.5);
+    ['neck','head'].forEach(n=>{const j=J_[n]; const pq=new THREE.Quaternion(); j.parent.getWorldQuaternion(pq); const wq=new THREE.Quaternion(); j.getWorldQuaternion(wq);
+      const nw=part.clone().multiply(wq); j.quaternion.copy(pq.invert().multiply(nw));
+      const e=new THREE.Euler().setFromQuaternion(j.quaternion,'YXZ'), r=ROM[n], c=(v,[a,b])=>Math.max(a*D,Math.min(b*D,v));
+      j.rotation.set(c(e.x,r.x),c(e.y,r.y),c(e.z,r.z),'YXZ'); j.updateMatrixWorld(true);});
+  }
+  function showHead(on){ headParts.forEach(o=>{ o.userData.hid=!on; o.visible=on&&!(o.userData.wireOnly&&!wireOn); }); }
+  let wireOn=false; const _setSkin=setSkin;
+  function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); }
+  const dims={L1:ARM1,L2:ARM2,T1:hipY-L(R.knee),T2:L(R.knee-R.ankle),hipY,chestH,ankleH:hipY-(hipY-L(R.knee))-L(R.knee-R.ankle),ball:L(R.footL)*0.55,footH:L(R.ankle)};
+  // 腕・脚が体の中心線を越えて交差しないように、目標点を自分の側へ寄せる（世界の座標で受けて返す）
+  function noCross(sd,target,kind){
+    const sx=sd==='R'?-1:1, ref=kind==='leg'?J_.pelvis:J_.chest, min=kind==='leg'?L(R.hipJW/2)*0.5:G(.03);
+    root.updateMatrixWorld(true); const p=ref.worldToLocal(target.clone());
+    if(p.x*sx<min) p.x=sx*min; return ref.localToWorld(p);
+  }
+  // 体の重心（体節ごとの重さの割合：Winter『Biomechanics and Motor Control of Human Movement』の表。体節の中点で近似）
+  const MASS=[['head',null,.081],['pelvis','neck',.497],['shL','elL',.028],['shR','elR',.028],['elL','wrL',.016],['elR','wrR',.016],['wrL',null,.006],['wrR',null,.006],
+              ['hpL','knL',.1],['hpR','knR',.1],['knL','anL',.0465],['knR','anR',.0465],['anL',null,.0145],['anR',null,.0145]];
+  function com(){ root.updateMatrixWorld(true); const c=v3(0,0,0); let m=0; const a=new THREE.Vector3(), b=new THREE.Vector3();
+    MASS.forEach(([p,q,w])=>{ if(p==='head') headMesh.getWorldPosition(a); else J_[p].getWorldPosition(a); if(q){J_[q].getWorldPosition(b); a.add(b).multiplyScalar(0.5);} c.add(a.multiplyScalar(w)); m+=w; });
+    return c.multiplyScalar(1/m); }
+  return {root,body,J_,handC,palmC,fingers,headMesh,setSkin:setSkin2,com,noCross,eyeCamera,showHead,aimHead,ROM,bendSpine,solve2,armIK,applyRhythm,distributeTwist,toeFlat,dims};
+}
+
+// 体育館（本人の目線で、どちらを向いているか分かる目印つき）。opts.center:[x,z] 中心、opts.yaw 向き、opts.target:[x,z] 相手の位置（体育館の中の座標）
+function buildGym(THREE, opts){
+  opts=opts||{}; const g=new THREE.Group(); const [gx,gz]=opts.center||[0,0]; const cx=0, cz=0;
+  g.position.set(gx,0,gz); g.rotation.y=opts.yaw||0;   // 体育館の中心と向き（yaw=π/2 で「前」が +X）。target は体育館の中での位置
+  const lam=c=>new THREE.MeshLambertMaterial({color:c});
+  const floorM=lam('#d9b98c');
+  const fl=new THREE.Mesh(new THREE.PlaneGeometry(28,28),floorM); fl.rotation.x=-Math.PI/2; fl.position.set(cx,-0.002,cz); g.add(fl);
+  const line=(x1,z1,x2,z2,c)=>{const l=Math.hypot(x2-x1,z2-z1);const m=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.004,l),new THREE.MeshBasicMaterial({color:c||0xffffff}));
+    m.position.set(cx+(x1+x2)/2,0.001,cz+(z1+z2)/2); m.rotation.y=Math.atan2(x2-x1,z2-z1); g.add(m);};
+  // コートの線と中央の円
+  line(-7,-12,-7,12); line(7,-12,7,12); line(-7,-12,7,-12); line(-7,12,7,12); line(-7,0,7,0);
+  for(let i=0;i<32;i++){const a=i/32*Math.PI*2,b=(i+1)/32*Math.PI*2; line(Math.sin(a)*1.8,Math.cos(a)*1.8,Math.sin(b)*1.8,Math.cos(b)*1.8);}
+  // 壁：前（+Z）は青に白い丸、後ろは白、左右は薄い緑と薄い橙。高い所に窓の帯
+  const wall=(w,h,x,z,ry,c)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),lam(c)); m.position.set(cx+x,h/2,cz+z); m.rotation.y=ry; g.add(m); return m;};
+  wall(28,7,0,14,Math.PI,'#7aa6d6'); wall(28,7,0,-14,0,'#eef0ec'); wall(28,7,14,0,-Math.PI/2,'#b8d8b0'); wall(28,7,-14,0,Math.PI/2,'#f0c9a0');
+  const disc=new THREE.Mesh(new THREE.CircleGeometry(1.4,40),lam('#ffffff')); disc.position.set(cx,3.2,cz+13.98); disc.rotation.y=Math.PI; g.add(disc);
+  [[0,13.97,Math.PI],[0,-13.97,0],[13.97,0,-Math.PI/2],[-13.97,0,Math.PI/2]].forEach(([x,z,ry])=>{const b=new THREE.Mesh(new THREE.PlaneGeometry(26,0.9),lam('#f7fbff'));b.position.set(cx+x,5.8,cz+z);b.rotation.y=ry;g.add(b);});
+  // 大きな文字（前・後・右・左・天井）。前を向いた時の右は −X 側
+  const label=(txt,w,x,y,z,rx,ry,col)=>{const c=document.createElement('canvas');c.width=c.height=256;const x2=c.getContext('2d');
+    x2.fillStyle=col||'#1d2a33';x2.font='bold '+(txt.length>1?110:200)+'px "Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif';x2.textAlign='center';x2.textBaseline='middle';x2.fillText(txt,128,138);
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,w),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c),transparent:true}));
+    m.position.set(cx+x,y,cz+z);m.rotation.set(rx,ry,0,'YXZ');g.add(m);};
+  label('前',2.4,0,3.2,13.95,0,Math.PI);
+  label('後',3.4,0,3.2,-13.95,0,0);
+  label('右',3.4,-13.95,3.2,0,0,Math.PI/2);
+  label('左',3.4,13.95,3.2,0,0,-Math.PI/2);
+  const ceil=new THREE.Mesh(new THREE.PlaneGeometry(28,28),new THREE.MeshBasicMaterial({color:0xe9edf1})); // 下からの光がないので、照明に頼らない色 ceil.position.set(cx,7,cz); ceil.rotation.x=Math.PI/2; g.add(ceil);
+  [[0,0],[0,7],[0,-7],[7,0],[-7,0]].forEach(([x,z])=>label('天井',4,x,6.98,z,Math.PI/2,Math.PI)); // 見上げた角度でも見えるよう5か所
+  // 相手（パスを受ける人の目印）
+  if(opts.target){const [tx,tz]=opts.target; const m=lam('#e0761c');
+    const body=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.2,1.2,16),m); body.position.set(tx,0.6,tz); g.add(body);
+    const hd=new THREE.Mesh(new THREE.SphereGeometry(0.13,16,12),m); hd.position.set(tx,1.36,tz); g.add(hd);
+    [-1,1].forEach(sx=>{const a=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.55,8),m);a.position.set(tx+sx*0.2,1.1,tz-0.15);a.rotation.x=-1.2;g.add(a);});}
+  return g;
+}
+// ---- lib/mannequin.js ここまで
+const GYM=buildGym(THREE,{center:[0,3],target:[0,4]}); scene.add(GYM);
+const MQ=buildMannequin(THREE,css); const fig=MQ; scene.add(fig.root);
+const J_=fig.J_, body=fig.body, fingers=MQ.fingers;
+const D=Math.PI/180, TAU=Math.PI*2;
+const v3=(x,y,z)=>new THREE.Vector3(x,y,z);
+const shadowM=()=>new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:0.15});
+const bodyShadow=new THREE.Mesh(new THREE.CircleGeometry(0.3,28),shadowM()); bodyShadow.rotation.x=-Math.PI/2; scene.add(bodyShadow);
+fig.root.updateMatrixWorld(true);
+const L1=MQ.dims.L1, L2=MQ.dims.L2, T1=MQ.dims.T1, T2=MQ.dims.T2, hipY=MQ.dims.hipY, ankleH=MQ.dims.ankleH, BALL=MQ.dims.ball;
+const tmpQ=new THREE.Quaternion();
+function setWorldQuat(obj,q){obj.parent.updateMatrixWorld(true);obj.parent.getWorldQuaternion(tmpQ);obj.quaternion.copy(tmpQ.invert().multiply(q));}
+const G=9.8;
+const smooth=u=>u<=0?0:u>=1?1:u*u*(3-2*u);
+const bell=u=>u<=0||u>=1?0:Math.sin(Math.PI*u)**2;
+
+// ---- 技のデータ（秒・m・度）
+// P：1回跳ぶ周期、Tc：足が床についている時間、Tf：空中の時間、turns：1回跳ぶ間に縄が回る数
+// r：手首が描く円の半径、hMin・hLift：かかとの上がり（床についている間の最小・踏み切りの瞬間）、knee：ひざの曲げの目安
+// tuck：空中で足を後ろへたたむ量（二重跳びの2回目を通すため）
+const TECHS={
+ mae:{name:'前回し', P:0.52, Tc:0.24, turns:1, r:0.050, hMin:12, hLift:32, tuck:0.00, lean:4,
+  phases:[[0,'着地','つま先から静かに着く。かかとは床につけない（かかとを上げる）。ひざは軽く曲げるだけ。'],
+          [0.07,'縄が頭の上','床についている間に、縄が後ろから頭の上を越えて前へ。ひじは脇につけたまま、手首で小さな円を描く。腕全体は回さない。'],
+          [0.19,'踏み切り','縄が体の前に下りてくるのに合わせて、つま先で小さく跳ぶ。'],
+          [0.31,'縄が足の下','縄が足の下を通る。跳ぶのは縄が通る高さで足りる（約10cm）。頭は動かさない。']]},
+ niju:{name:'二重跳び', P:0.62, Tc:0.18, turns:2, r:0.055, hMin:8, hLift:36, tuck:0.06, lean:6,
+  phases:[[0,'着地','つま先で着き、すぐ次の踏み切りへ。かかとを上げたまま、ひざで少しだけ受ける。'],
+          [0.12,'踏み切り（強く）','前回しより高く跳ぶ（約24cm）。跳び上がるのと同時に手首を速く回す。'],
+          [0.19,'1回目が足の下','跳び上がってすぐ1回目が足の下を通る。手首の円は小さく、速く。'],
+          [0.30,'空中で回す','体はまっすぐのまま、手首だけで縄を頭の上へ送る。頭は動かさない。'],
+          [0.48,'2回目が足の下','足を少し後ろへたたんで2回目を通す。通ったらつま先で着地。']]},
+};
+let TECH=TECHS.mae, P=0, TC=0, TF=0, PR=0, VUP=0, DIP=0, YL=0, AY=0;
+function setTechParams(k){
+  TECH=TECHS[k]; P=TECH.P; TC=TECH.Tc; TF=P-TC; PR=P/TECH.turns;
+  VUP=G*TF/2; DIP=VUP*TC/Math.PI; // 床についている間は正弦の形で沈んで戻る（着地と踏み切りの速さが空中の放物線とつながる）
+  AY=ankleH+Math.sin(TECH.hLift*D)*BALL; YL=AY+(T1+T2)*0.985; // 踏み切りの瞬間の腰の高さ：つま先立ちで脚はほぼ伸びている
+}
+// 1周期の中の時刻
+const ph=t=>((t%P)+P)%P;
+function pelY(t){const u=ph(t); if(u<TC) return YL-DIP*Math.sin(Math.PI*u/TC); const s=u-TC; return YL+VUP*s-G*s*s/2;}
+function heelAng(t){const u=ph(t); if(u<TC) return TECH.hMin+(TECH.hLift-TECH.hMin)*(1-Math.sin(Math.PI*u/TC)); return TECH.hLift+10*bell((u-TC)/TF);} // 空中はつま先を少し伸ばす
+function airK(t){const u=ph(t); return u<TC?0:bell((u-TC)/TF);}
+
+// ---- 手首と持ち手（世界の座標で解析的に決める。縄の計算と人形の表示が同じ式を使う）
+const HAND={x:0.40, dy:0.0, z:0.20}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
+const HANDLE={len:0.115, rad:0.0125, tip:0.075, gy:-0.064, gz:0.02}; // 持ち手：長さ・太さ・縄が出る端までの距離（小指側）・握る位置（手の座標）
+// 手首の円：角度 a と半径 r は、縄の計算の中で決まる（人が縄の位置を感じて回し方を合わせるのと同じ）。表示はその記録を使う
+let HT=null; // 記録：フレームごとの [a, r, θ]（θ：持ち手が縄に引かれて傾く角度）
+function wristAR(sd,t,a,r){const sx=sd==='R'?-1:1;
+  // 円は体の横から見て、上で前へ・下で後ろへ（前回しの縄と同じ向き）。腕は体と一緒に上下し、空中では少し遅れて下がる
+  return v3(sx*HAND.x, pelY(t)+HAND.dy-0.02*airK(t)+r*Math.cos(a), HAND.z+r*Math.sin(a)); }
+function handQuatTh(sd,th){ qx.setFromAxisAngle(v3(1,0,0),th); return qx.clone().multiply(QBASE[sd]); }
+function tipAR(sd,t,a,r,th){ return handleLocal(sd,HANDLE.tip).applyQuaternion(handQuatTh(sd,th)).add(wristAR(sd,t,a,r)); }
+function htAt(t){ // 記録からの補間（周期の継ぎ目では角度に 2π×回数 を足してつなぐ）
+  const N=HT.length, x=ph(t)*RECHZ, i=Math.floor(x)%N, j=(i+1)%N, f=x-Math.floor(x), A=HT[i], B=HT[j];
+  const aB=B[0]+(j<i?TAU*TECH.turns:0); return [A[0]+(aB-A[0])*f, A[1]+(B[1]-A[1])*f, A[2]+(B[2]-A[2])*f]; }
+function wristPos(sd,t){const [a,r]=htAt(t); return wristAR(sd,t,a,r);}
+function handQuat(sd,t){return handQuatTh(sd,htAt(t)[2]);}
+function tipPos(sd,t){const [a,r,th]=htAt(t); return tipAR(sd,t,a,r,th);}
+const QBASE={};
+(function(){ // 握り：持ち手は下・少し前・少し外へ。こぶしは前、手のひらは内向き、親指が上
+  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; const h=v3(sx*0.28,-1,0.22).normalize(); const fw=v3(0,0.15,1); const f=fw.sub(h.clone().multiplyScalar(fw.dot(h))).normalize();
+    const X=sd==='R'?h.clone():h.clone().negate(), Y=f.clone().negate(), Z=new THREE.Vector3().crossVectors(X,Y);
+    QBASE[sd]=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X,Y,Z));});
+})();
+const qx=new THREE.Quaternion();
+function handleLocal(sd,s){const sx=sd==='R'?-1:1; return v3(-sx*s,HANDLE.gy,HANDLE.gz);} // 小指側への距離 s
+
+// ---- 縄の物理計算
+const LEAD=1.4, GUIDE=15, BEARLY=0.035, DAMPI=0.02; // BEARLY：縄が足の下を通るのを空中の真ん中より少し早く（床を滑っているうちに通す。床で跳ね返った縄がつま先に当たらない） // 手首が縄より先を回る角度（ラジアン）、補助の強さ
+const RN=41, RL=2.30, RMASS=0.12, RDIA=0.005, RRAD=0.006, SUB=2400, ITER=5;
+let REC=null, RECHZ=240, RECN=0;
+const wrapA=x=>Math.atan2(Math.sin(x),Math.cos(x));
+function targetBottoms(){const mid=TC+TF/2-BEARLY; return TECH.turns===1?[mid]:[mid-PR/2,mid+PR/2];}
+let SIMLOG=null;
+function simulate(warm){ // warm 周期ぶん回して縄の回り方を合わせてから、1周期と継ぎ目用の少しを記録する
+  const seg=RL/(RN-1), m=RMASS/(RN-1), k=0.5*1.2*1.2*RDIA*seg/m; // 空気の抵抗（抗力係数1.2）
+  const X=new Float64Array(RN*3), Xp=new Float64Array(RN*3), dt=1/SUB, W0=TAU/PR, MID=((RN-1)/2)*3;
+  const PSIC=Math.PI-W0*targetBottoms()[0]; // 縄の真ん中が真下（角度π）に来る時刻を、目標の時刻へ
+  let a=0, r=TECH.r, rI=TECH.r, th=0, psiU=0, psiPrev=0, wf=W0;
+  const center=t=>[pelY(t)+HAND.dy-0.02*airK(t), HAND.z];
+  { // 始め：手と手の間に弧を作り、目標の速さで回っている状態から始める
+    const psi=W0*0+PSIC; a=psi+1.4; const A=tipAR('L',0,a,r,0), B=tipAR('R',0,a,r,0), [cy,cz]=center(0);
+    for(let i=0;i<RN;i++){const s=i/(RN-1); const p=A.clone().lerp(B,s); const R=0.9*Math.pow(Math.sin(Math.PI*s),0.7);
+      p.y=cy+R*Math.cos(psi); p.z=cz+R*Math.sin(psi); const vy=-W0*R*Math.sin(psi), vz=W0*R*Math.cos(psi);
+      X[i*3]=p.x; X[i*3+1]=p.y; X[i*3+2]=p.z; Xp[i*3]=p.x; Xp[i*3+1]=p.y-vy*dt; Xp[i*3+2]=p.z-vz*dt;}
+    psiU=psi; psiPrev=psi;
+  }
+  const steps=Math.round((warm+1.2)*P*SUB), recStart=Math.round(warm*P*SUB), every=SUB/RECHZ;
+  const rec=[], ht=[]; SIMLOG=[];
+  for(let st=0;st<=steps;st++){
+    const t=st*dt;
+    // 縄の真ん中の角度（手首の高さの軸まわり、上が0、前が＋）
+    const [cy,cz]=center(t); const psi=Math.atan2(X[MID+2]-cz,X[MID+1]-cy); psiU+=wrapA(psi-psiPrev); psiPrev=psi;
+    if(st>=recStart&&(st-recStart)%every===0){rec.push(Float32Array.from(X)); ht.push([a,r,th]);}
+    if(st%240===0) SIMLOG.push([+(t).toFixed(2),+r.toFixed(3),+wrapA(psiU-(W0*t+PSIC)).toFixed(2)]);
+    if(st===steps) break;
+    // 手首は目標の速さで円を描き、縄より少し先を回る（位相は体の跳ぶ周期に固定）
+    const e=wrapA(psiU-(W0*t+PSIC));
+    a=W0*t+PSIC+LEAD; r=TECH.r;
+    // 持ち手は縄に引かれる向きへ傾く（真下を重くした向き）。急に向きを変えないように少し遅らせる
+    { const dy=X[4]-X[1], dz=X[5]-X[2], n=Math.hypot(dy,dz)||1; const tT=Math.max(-38*D,Math.min(38*D,-Math.atan2(dz/n,1.6-dy/n))); th+=(tT-th)*dt/0.03; }
+    const A=tipAR('L',t+dt,a,r,th), B=tipAR('R',t+dt,a,r,th);
+    // 回る速さの補助：縄全体の回る速さ（角運動量から）を目標へ。各点を今動いている向きへ同じ割合で押す（形は変えない。人が手首の加減で行う調整の代わり）
+    let Ln=0, In=0; for(let i=1;i<RN-1;i++){const j=i*3, y=X[j+1]-cy, z=X[j+2]-cz, vy=(X[j+1]-Xp[j+1])/dt, vz=(X[j+2]-Xp[j+2])/dt; Ln+=y*vz-z*vy; In+=y*y+z*z;}
+    const gerr=(W0-4*e)-Ln/(In||1), gk=Math.max(-6,Math.min(6,GUIDE*gerr/W0)); // 動いている向きに押す（床を滑る縄を持ち上げない）
+    for(let i=1;i<RN-1;i++){const j=i*3;
+      const vx=(X[j]-Xp[j])/dt, vy=(X[j+1]-Xp[j+1])/dt, vz=(X[j+2]-Xp[j+2])/dt;
+      let tx=X[j+3]-X[j-3], ty=X[j+4]-X[j-2], tz=X[j+5]-X[j-1]; const tn=Math.hypot(tx,ty,tz)||1; tx/=tn;ty/=tn;tz/=tn;
+      const vt=vx*tx+vy*ty+vz*tz; const px=vx-vt*tx, py=vy-vt*ty, pz=vz-vt*tz, pv=Math.hypot(px,py,pz); // 縄に垂直な速さの成分だけに抵抗
+      const gx=px*gk, gy=py*gk, gz=pz*gk; // 縄に垂直な向きだけ（縄を伸ばさない）
+      const nx=X[j]+vx*dt+(-k*pv*px+gx)*dt*dt, ny=X[j+1]+vy*dt+(-G-k*pv*py+gy)*dt*dt, nz=X[j+2]+vz*dt+(-k*pv*pz+gz)*dt*dt;
+      Xp[j]=X[j]; Xp[j+1]=X[j+1]; Xp[j+2]=X[j+2]; X[j]=nx; X[j+1]=ny; X[j+2]=nz;}
+    Xp[0]=X[0];Xp[1]=X[1];Xp[2]=X[2]; X[0]=A.x;X[1]=A.y;X[2]=A.z;
+    const E=(RN-1)*3; Xp[E]=X[E];Xp[E+1]=X[E+1];Xp[E+2]=X[E+2]; X[E]=B.x;X[E+1]=B.y;X[E+2]=B.z;
+    for(let it=0;it<ITER;it++){
+      for(let i=0;i<RN-1;i++){const p=i*3,q=p+3; const dx=X[q]-X[p], dy=X[q+1]-X[p+1], dz=X[q+2]-X[p+2]; const d=Math.hypot(dx,dy,dz)||1e-9, c=(d-seg)/d;
+        const wa=i===0?0:1, wb=i===RN-2?0:1, ws=wa+wb;
+        X[p]+=dx*c*wa/ws; X[p+1]+=dy*c*wa/ws; X[p+2]+=dz*c*wa/ws; X[q]-=dx*c*wb/ws; X[q+1]-=dy*c*wb/ws; X[q+2]-=dz*c*wb/ws;}
+    }
+    { // 縄の中の摩擦：となりどうしの速さの差を少しずつ減らす（細かい波が残らない）
+      const V=new Float64Array(RN*3); for(let n=0;n<RN*3;n++) V[n]=X[n]-Xp[n];
+      for(let i=1;i<RN-1;i++){const j=i*3; for(let c=0;c<3;c++){const avg=(V[j-3+c]+V[j+3+c])/2; Xp[j+c]=X[j+c]-(V[j+c]+(avg-V[j+c])*DAMPI);}} }
+    for(let i=1;i<(RN-1)/2;i++){const j=i*3, q=(RN-1-i)*3; // 両手は左右対称なので、縄も左右対称に保つ（横に揺れる成分を除く）
+      for(const B of [X,Xp]){const x=(B[j]-B[q])/2, y=(B[j+1]+B[q+1])/2, z=(B[j+2]+B[q+2])/2; B[j]=x;B[q]=-x;B[j+1]=B[q+1]=y;B[j+2]=B[q+2]=z;}}
+    { const j=((RN-1)/2)*3; X[j]=0; Xp[j]=0; }
+    for(let i=1;i<RN-1;i++){const j=i*3; if(X[j+1]<RRAD){X[j+1]=RRAD; if(Xp[j+1]<RRAD)Xp[j+1]=RRAD; // 床：めり込まず、横には少しこすれて減速する
+      Xp[j]=X[j]-(X[j]-Xp[j])*0.9995; Xp[j+2]=X[j+2]-(X[j+2]-Xp[j+2])*0.9995;}}
+    // 縄の回る速さ（なめらかにした値）
+    { const [cy2,cz2]=center(t+dt); const p2=Math.atan2(X[MID+2]-cz2,X[MID+1]-cy2); wf+=(wrapA(p2-psi)/dt-wf)*dt/0.12; }
+  }
+  // 継ぎ目：記録の最後の少し（1周期の先）を、始めへなめらかにつなぐ
+  const N=Math.round(P*RECHZ), Mx=rec.length-N, out=[], hto=[];
+  for(let f=0;f<N;f++){ if(f<Mx){const u=smooth(f/Mx), A=rec[N+f], B=rec[f], o=new Float32Array(RN*3); for(let n=0;n<RN*3;n++) o[n]=A[n]+(B[n]-A[n])*u; out.push(o);
+      const ha=ht[N+f], hb=ht[f]; hto.push([ha[0]-TAU*TECH.turns+(hb[0]-(ha[0]-TAU*TECH.turns))*u, ha[1]+(hb[1]-ha[1])*u, ha[2]+(hb[2]-ha[2])*u]);}
+    else {out.push(rec[f]); hto.push(ht[f]);} }
+  return {rec:out, ht:hto};
+}
+// 縄が足の下を通る時刻（縄の真ん中が体の中心の前後位置を、低い所で後ろへ通る）
+function bottomTimes(rec){const res=[], mid=((RN-1)/2)*3, zc=0.03;
+  for(let f=0;f<rec.length;f++){const a=rec[f],b=rec[(f+1)%rec.length]; if(a[mid+1]<0.5&&a[mid+2]>zc&&b[mid+2]<=zc){const u=(a[mid+2]-zc)/(a[mid+2]-b[mid+2]); res.push((f+u)/RECHZ);}}
+  return res;}
+const SOLVED={};
+function solveRope(k){
+  if(!SOLVED[k]){ const s=simulate(TECH.turns===1?14:12); SOLVED[k]=s; }
+  REC=SOLVED[k].rec; HT=SOLVED[k].ht; RECN=REC.length;
+}
+function ropeAt(t,out){ // 記録した1周期から、時刻 t の縄（周期でくり返す）
+  const x=ph(t)*RECHZ, i=Math.floor(x)%RECN, j=(i+1)%RECN, f=x-Math.floor(x), a=REC[i], b=REC[j];
+  for(let n=0;n<RN*3;n++) out[n]=a[n]+(b[n]-a[n])*f;
+  const A=tipPos('L',t), B=tipPos('R',t); out[0]=A.x;out[1]=A.y;out[2]=A.z; const e=(RN-1)*3; out[e]=B.x;out[e+1]=B.y;out[e+2]=B.z; // 端は持ち手に合わせる
+  return out; }
+
+// ---- 縄と持ち手の表示
+const RSIDES=6;
+function makeTube(color){
+  const g=new THREE.BufferGeometry(), pos=new Float32Array(RN*RSIDES*3), idx=[];
+  for(let i=0;i<RN-1;i++) for(let s=0;s<RSIDES;s++){const a=i*RSIDES+s, b=i*RSIDES+(s+1)%RSIDES, c=a+RSIDES, d=b+RSIDES; idx.push(a,c,b,b,c,d);}
+  g.setIndex(idx); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color})); m.frustumCulled=false; return m; }
+const rope=makeTube(css('--rope')); scene.add(rope);
+const RBUF=new Float32Array(RN*3);
+function updateTube(mesh,X,rad){
+  const pos=mesh.geometry.attributes.position.array; const t=new THREE.Vector3(), n=new THREE.Vector3(), b=new THREE.Vector3(), up=v3(0,1,0), side=v3(1,0,0);
+  for(let i=0;i<RN;i++){const i0=Math.max(0,i-1)*3, i1=Math.min(RN-1,i+1)*3;
+    t.set(X[i1]-X[i0],X[i1+1]-X[i0+1],X[i1+2]-X[i0+2]).normalize();
+    n.crossVectors(t,Math.abs(t.y)<0.9?up:side).normalize(); b.crossVectors(t,n);
+    for(let s=0;s<RSIDES;s++){const a=s/RSIDES*TAU, c=Math.cos(a)*rad, si=Math.sin(a)*rad, o=(i*RSIDES+s)*3;
+      pos[o]=X[i*3]+n.x*c+b.x*si; pos[o+1]=X[i*3+1]+n.y*c+b.y*si; pos[o+2]=X[i*3+2]+n.z*c+b.z*si;}}
+  mesh.geometry.attributes.position.needsUpdate=true; mesh.geometry.computeVertexNormals(); }
+// 縄の通り道（残像）：実際の時間で少し前の縄を、薄い線で重ねる
+const GHOSTS=[]; const GN=7;
+for(let g=0;g<GN;g++){const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(RN*3),3));
+  const l=new THREE.Line(geo,new THREE.LineBasicMaterial({color:css('--rope'),transparent:true,opacity:0.42*(1-g/GN)})); l.frustumCulled=false; scene.add(l); GHOSTS.push(l);}
+const GBUF=new Float32Array(RN*3);
+// 持ち手（手の中に握る。縄は小指側の端から出る）
+const HANDLES={};
+['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; const g=new THREE.Group();
+  const c=new THREE.Mesh(new THREE.CylinderGeometry(HANDLE.rad,HANDLE.rad*0.9,HANDLE.len,10),M(css('--grip')));
+  c.rotation.z=Math.PI/2; c.position.x=-sx*(HANDLE.tip-HANDLE.len/2); g.add(c);
+  const cap=new THREE.Mesh(new THREE.CylinderGeometry(HANDLE.rad*0.7,HANDLE.rad*0.5,0.012,8),M('#555'));
+  cap.rotation.z=Math.PI/2; cap.position.x=-sx*HANDLE.tip; g.add(cap);
+  g.position.set(0,HANDLE.gy,HANDLE.gz); J_['wr'+sd].add(g); HANDLES[sd]=g;});
+// 手首の通り道（1回まわる間の線）と、縄の出る端の通り道
+const TRN=64;
+function makeTrail(color,op){const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TRN*3),3));
+  const l=new THREE.LineLoop(geo,new THREE.LineBasicMaterial({color,transparent:true,opacity:op,depthTest:false})); l.renderOrder=5; l.frustumCulled=false; scene.add(l); return l;}
+const TRAILS={wrR:makeTrail(css('--trail'),0.95),wrL:makeTrail(css('--trail'),0.95),tipR:makeTrail(css('--rope'),0.9),tipL:makeTrail(css('--rope'),0.9)};
+const DOTS={}; ['R','L'].forEach(sd=>{const d=new THREE.Mesh(new THREE.SphereGeometry(0.009,10,8),new THREE.MeshBasicMaterial({color:css('--trail'),depthTest:false})); d.renderOrder=6; scene.add(d); DOTS[sd]=d;});
+function updateTrails(t){ // 体と一緒に動く円として描く（手首の円の形が見えるように、腰の上下は今の高さにそろえる）
+  const yNow=pelY(t);
+  ['R','L'].forEach(sd=>{const w=TRAILS['wr'+sd].geometry.attributes.position.array, q=TRAILS['tip'+sd].geometry.attributes.position.array;
+    for(let i=0;i<TRN;i++){const tt=t-PR+PR*i/TRN, dy=yNow-pelY(tt)+0.02*airK(tt)-0.02*airK(t); const a=wristPos(sd,tt), b=tipPos(sd,tt);
+      w[i*3]=a.x;w[i*3+1]=a.y+dy;w[i*3+2]=a.z; q[i*3]=b.x;q[i*3+1]=b.y+dy;q[i*3+2]=b.z;}
+    TRAILS['wr'+sd].geometry.attributes.position.needsUpdate=true; TRAILS['tip'+sd].geometry.attributes.position.needsUpdate=true;
+    DOTS[sd].position.copy(wristPos(sd,t));});
+}
+
+// ---- 人形の姿勢
+const FOOT={x:0.058, z:0.0}; // 両足をそろえて跳ぶ
+function footTgt(sd,t){ // 足首の位置：床についている間は母指球を支点にかかとが上下、空中は体と一緒に上がる（二重跳びは足を少し後ろへたたむ）
+  const sx=sd==='R'?-1:1, h=heelAng(t)*D, lift=Math.max(0,pelY(t)-YL), ak=airK(t);
+  return v3(sx*FOOT.x, ankleH+Math.sin(h)*BALL+lift+TECH.tuck*ak, FOOT.z+BALL*(1-Math.cos(h))-TECH.tuck*1.2*ak); }
+function setPose(t){
+  ['R','L'].forEach(sd=>{J_['cl'+sd].rotation.set(0,0,0);J_['fr'+sd].quaternion.set(0,0,0,1);});
+  const py=pelY(t), ak=airK(t);
+  body.quaternion.set(0,0,0,1); body.position.set(0,py-hipY,0.035);
+  // 体はほぼまっすぐ、少しだけ前に傾ける。頭は動かさない（首で前傾を打ち消し、正面を見る）
+  const ln=TECH.lean;
+  J_.pelvis.rotation.set(ln*0.4*D,0,0); J_.spine.rotation.set(ln*0.4*D,0,0); J_.chest.rotation.set(ln*0.2*D,0,0);
+  J_.neck.rotation.set(-ln*0.6*D,0,0); J_.head.rotation.set(-ln*0.4*D,0,0);
+  fig.root.updateMatrixWorld(true);
+  // 脚：床についている間は母指球を支点にかかとが上下、空中は踏み切りの形のまま体と一緒に上がる（二重跳びは足を少し後ろへたたむ）
+  const h=heelAng(t)*D, lift=Math.max(0,py-YL);
+  [['L',1],['R',-1]].forEach(([sd,sx])=>{
+    const tgt=footTgt(sd,t);
+    const pole=v3(sx*0.08,0.15,1).normalize();
+    MQ.solve2(J_['hp'+sd],J_['kn'+sd],J_.pelvis.worldToLocal(tgt),pole,T1,T2,1);
+    fig.root.updateMatrixWorld(true);
+    J_['an'+sd].quaternion.set(0,0,0,1);
+    setWorldQuat(J_['an'+sd],new THREE.Quaternion().setFromAxisAngle(v3(1,0,0),h));
+    MQ.toeFlat(sd,ak>0.01?0:1);
+  });
+  // 腕：ひじは脇の近く（後ろ・少し外へ曲がる）、手首は円を描く
+  [['R',-1],['L',1]].forEach(([sd,sx])=>{
+    MQ.armIK(sd,wristPos(sd,t),v3(sx*0.35,-0.4,-1));
+    fig.root.updateMatrixWorld(true);
+    setWorldQuat(J_['wr'+sd],handQuat(sd,t)); MQ.distributeTwist(sd);
+    // こぶしで持ち手を握る
+    fingers[sd].forEach(f=>{f.base.rotation.set(-78*D,0,f.spread*2*D); f.j2.rotation.set(-85*D,0,0);});
+    const T=fingers[sd].thumb; T.tb.rotation.set(-0.9,0,T.sx*25*D); T.tj.rotation.set(-0.5,0,0);
+  });
+  fig.root.updateMatrixWorld(true);
+  MQ.aimHead(v3(0,1.3,6),0.6);
+  bodyShadow.position.set(0,0.002,0.05); bodyShadow.scale.setScalar(1-0.6*Math.min(1,lift/0.3));
+}
+function frameAt(t){
+  setPose(t);
+  updateTube(rope,ropeAt(t,RBUF),RRAD);
+  GHOSTS.forEach((l,g)=>{l.visible=showGhost; if(!showGhost) return; const a=l.geometry.attributes.position; ropeAt(t-(g+1)/150,GBUF); a.array.set(GBUF); a.needsUpdate=true;});
+  Object.values(TRAILS).forEach(l=>l.visible=showTrail); Object.values(DOTS).forEach(d=>d.visible=showTrail);
+  if(showTrail) updateTrails(t);
+}
+
+// ---- 再生
+let t=0, playing=false, speed=0.25, last=0, dirty=true, showGhost=true, showTrail=true, techKey='mae';
+let DUR_S=1;
+const seek=document.getElementById('seek'), playB=document.getElementById('play');
+const phName=document.getElementById('phName'), phTip=document.getElementById('phTip');
+function phaseIndex(t){const u=ph(t)/P, ps=TECH.phases; let i=0; while(i<ps.length-1&&u*P>=ps[i+1][0]-0.005)i++; return i;}
+let shown=-1;
+function setT(nt){t=nt; if(t>DUR_S) t=t%DUR_S; if(t<0)t=0; frameAt(t); seek.value=Math.round(t/DUR_S*1000);
+  const i=phaseIndex(t); if(i!==shown){shown=i; const p=TECH.phases[i]; phName.textContent=p[1]; phTip.textContent=p[2];
+    [...phaseRow.querySelectorAll('button')].forEach((b,k)=>b.setAttribute('aria-pressed',String(k===i)));}
+  dirty=true;}
+function setPlaying(p){playing=p;playB.textContent=p?'❚❚ 止める':'▶ 再生';last=performance.now();}
+playB.onclick=()=>setPlaying(!playing);
+seek.oninput=()=>{setPlaying(false);setT(seek.value/1000*DUR_S);};
+const phaseRow=document.getElementById('phases');
+function buildPhases(){[...phaseRow.querySelectorAll('button')].forEach(b=>b.remove());
+  TECH.phases.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p[1];b.id='ph'+i;b.onclick=()=>{setPlaying(false);setT(Math.floor(t/P)*P+p[0]+0.001);};phaseRow.appendChild(b);}); shown=-1;}
+const busy=document.getElementById('busy');
+function useTech(k){
+  techKey=k; setTechParams(k);
+  busy.style.display='flex';
+  setTimeout(()=>{ solveRope(k); DUR_S=P*2; window.__motion.DUR=DUR_S; busy.style.display='none'; buildPhases(); setT(0);
+    [...techRow.querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',String(b.id==='tech-'+k))); },30);
+}
+const techRow=document.getElementById('techs');
+Object.entries(TECHS).forEach(([k,v])=>{const b=document.createElement('button');b.textContent=v.name;b.id='tech-'+k;b.onclick=()=>{setPlaying(false);useTech(k);};techRow.appendChild(b);});
+const speedRow=document.getElementById('speeds');
+[[0.1,'とてもゆっくり（1/10）'],[0.25,'ゆっくり（1/4）'],[0.5,'半分'],[1,'実際の速さ']].forEach(([v,n])=>{const b=document.createElement('button');b.textContent=n;b.id='sp'+v;
+  b.setAttribute('aria-pressed',String(v===speed));b.onclick=()=>{speed=v;[...speedRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));};speedRow.appendChild(b);});
+const showRow=document.getElementById('shows');
+[['trail','手首の通り道',()=>showTrail,v=>showTrail=v],['ghost','縄の残像',()=>showGhost,v=>showGhost=v]].forEach(([k,n,g,s])=>{const b=document.createElement('button');b.textContent=n;b.id='show-'+k;
+  b.setAttribute('aria-pressed',String(g()));b.onclick=()=>{s(!g());b.setAttribute('aria-pressed',String(g()));setT(t);};showRow.appendChild(b);});
+let az=Math.PI/2, el=0.08, focus='body';
+const viewRow=document.getElementById('views');
+[['横から',Math.PI/2,0.08,'body'],['ななめ前',0.7,0.12,'body'],['正面',0,0.06,'body'],['うしろ',Math.PI,0.12,'body'],['手首を大きく',1.25,0.1,'hand']].forEach(([n,a,e,f])=>{
+  const b=document.createElement('button');b.textContent=n;b.onclick=()=>{az=a;el=e;focus=f;setZoom(f==='hand'?0.32:1);dirty=true;};viewRow.appendChild(b);});
+const skinRow=document.getElementById('skins');
+[['doll','なめらか'],['wire','針金（透けて奥が見える）']].forEach(([k,n],i)=>{const b=document.createElement('button');b.textContent=n;b.id='skin-'+k;
+  b.setAttribute('aria-pressed',String(i===0));b.onclick=()=>{MQ.setSkin(k);[...skinRow.querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed',String(x===b)));dirty=true;};skinRow.appendChild(b);});
+let zoom=1;
+function setZoom(z){zoom=Math.max(0.2,Math.min(2.5,z));dirty=true;}
+const zoomRow=document.getElementById('zooms');
+[['＋ 大きく',1/1.4],['− 小さく',1.4],['もとの大きさ',0]].forEach(([n,f])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{if(!f)focus='body';setZoom(f?zoom*f:1);};zoomRow.appendChild(b);});
+stage.addEventListener('wheel',e=>{e.preventDefault();setZoom(zoom*Math.exp(e.deltaY*0.001));},{passive:false});
+const pts=new Map(); let pinch0=0, zoom0=1, drag=null;
+stage.addEventListener('pointerdown',e=>{pts.set(e.pointerId,{x:e.clientX,y:e.clientY});stage.setPointerCapture(e.pointerId);
+  if(pts.size===2){const [a,b]=[...pts.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);zoom0=zoom;drag=null;} else drag={x:e.clientX,y:e.clientY};});
+stage.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===2&&pinch0){const [a,b]=[...pts.values()];setZoom(zoom0*pinch0/Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)));}
+  else if(drag){az-=(e.clientX-drag.x)*0.01;el=Math.max(-0.1,Math.min(1.3,el+(e.clientY-drag.y)*0.006));drag={x:e.clientX,y:e.clientY};dirty=true;}});
+['pointerup','pointercancel'].forEach(ev=>stage.addEventListener(ev,e=>{pts.delete(e.pointerId);if(pts.size<2)pinch0=0;drag=null;}));
+let W=0,Hh=0;
+function resize(){W=stage.clientWidth;Hh=stage.clientHeight;renderer.setSize(W,Hh,false);dirty=true;}
+new ResizeObserver(resize).observe(stage);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>dirty=true);
+function frame(now){
+  if(playing){const dt=Math.min(0.1,(now-last)/1000);last=now;setT(t+dt*speed);}
+  if(dirty&&W){dirty=false;
+    const dist=4.6*zoom; let cx=0, cy=0.85, cz=0.1;
+    if(focus==='hand'){const p=wristPos('R',t); cx=p.x*0.6; cy=p.y; cz=p.z;}
+    cam.aspect=W/Hh;cam.position.set(cx+Math.sin(az)*Math.cos(el)*dist,cy+Math.sin(el)*dist,cz+Math.cos(az)*Math.cos(el)*dist);
+    cam.lookAt(cx,cy,cz);cam.updateProjectionMatrix();
+    renderer.setClearColor(new THREE.Color(css('--stage')));renderer.render(scene,cam);}
+  requestAnimationFrame(frame);
+}
+// 検証用
+window.__motion={rom:MQ.ROM,DUR:1,setPose:t=>frameAt(t),J:J_,headMesh:MQ.headMesh,armLen:L1+L2,legLen:T1+T2,
+  rope:t=>Array.from(ropeAt(t,new Float32Array(RN*3))), tech:()=>techKey, info:()=>({P,TC,TF,PR,YL,DIP,log:SIMLOG,bottoms:REC?bottomTimes(REC):[],target:targetBottoms()}),
+  useTech, view:(a,e,z,f)=>{az=a;el=e;zoom=z;focus=f||"body";dirty=true;},
+  contacts:[['footL','anL','hpL','L'],['footR','anR','hpR','R']].map(([name,joint,root,sd])=>({name,joint,root,reach:T1+T2,at:t=>ph(t)<TC?Object.assign({w:1},footTgt(sd,t)):null})),
+  support:()=>[]}; // 腕で体を支える場面はない
+resize(); useTech('mae'); requestAnimationFrame(frame);
+})();
+</script>
