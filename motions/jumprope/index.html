@@ -429,13 +429,15 @@ function heelAng(t){const u=phS(t); if(u<TC) return TECH.hMin+(TECH.hLift-TECH.h
 function airK(t){const u=phS(t); return u<TC?0:bell((u-TC)/TF);}
 
 // ---- 手首と持ち手（世界の座標で解析的に決める。縄の計算と人形の表示が同じ式を使う）
-const HAND={x:0.26, dy:0.0, z:0.32}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
+const HAND={x:0.26, dy:0.10, z:0.22}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
 const HANDLE={len:0.12, rad:0.010, tip:0.072}; // 長さ・太さ・中心から付け根までの距離 // 持ち手：長さ・太さ・縄が出る端（負＝親指側。縄は親指側の端から出て、持ち手の尻は小指側へ出る）・握る位置（手の座標）
 // 手首の円：角度 a と半径 r は、縄の計算の中で決まる（人が縄の位置を感じて回し方を合わせるのと同じ）。表示はその記録を使う
 let HT=null; // 記録：フレームごとの [a, r, θ]（θ：持ち手が縄に引かれて傾く角度）
 function wristAR(sd,t,a,r){const sx=sd==='R'?-1:1;
   // 円は体の横から見て、上で前へ・下で後ろへ（前回しの縄と同じ向き）。腕は体と一緒に上下し、空中では少し遅れて下がる
-  return v3(sx*HAND.x, pelY(t)+HAND.dy-0.02*airK(t)+r*Math.cos(a), HAND.z+r*Math.sin(a)); }
+  // 胴が前後・左右に傾いて肩が動いた分だけ、手首も一緒に動かす（ひじの曲げ伸ばしが目立たない）
+  const kp=kickPitch(t)*D, sw=bodySway(t), rl=-sw/0.02*SWAYROLL*D, SH=0.41;
+  return v3(sx*HAND.x+sw-SH*Math.sin(rl), pelY(t)+HAND.dy-0.02*airK(t)-SH*(1-Math.cos(kp))+r*Math.cos(a), HAND.z+0.035*0+SH*Math.sin(kp)+r*Math.sin(a)); }
 const FA=v3(0,-0.35,1).normalize(), TWIST=16*D; // 前腕の軸（前・少し下）と、ひねりの大きさ
 const qtw=new THREE.Quaternion();
 function handQuatTh(sd,th,a){ // 手の向き：前腕のひねり（回内・回外）で付け根が上下し、手首の曲げ（θ）で前後に傾く。ひねりは手首の円と同じ周期
