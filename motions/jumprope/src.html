@@ -48,7 +48,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   <div class="row" id="zooms"><p class="label">大きさ（2本指でつまんでも変えられます）</p></div>
   <div class="row" id="skins"><p class="label">見た目</p></div>
   <div class="row" id="views"><p class="label">見る向き（指でドラッグしても回せます）</p></div>
-  <p class="note">人形は人体寸法の実測比から作った中間案（約6頭身、身長約1.45m）。縄は長さ2.3m・重さ120gのひもを41個の点に分け、重さ・空気の抵抗・床との当たりを計算して動かしたもの（物理計算）。縄の形は計算の結果で、手で描いたものではありません（ただし回る速さだけは、人が手ごたえを感じて手首の加減で合わせる分を、補助の力で一定に保っています）。手首は「ひじを脇につけ、手首で小さな円を描く」動きを与え、持ち手は縄に引かれる向きへ傾けています。跳ぶ高さ・回数とこつ（頭を動かさない・速く回す・かかとを上げる）は二重跳びの練習動画の要点に合わせました。手首の角度そのものは動画から測れないため、推定です。</p>
+  <p class="note">人形は人体寸法の実測比から作った中間案（約6頭身、身長約1.45m）。縄は長さ2.3m・重さ120gのひもを41個の点に分け、重さ・空気の抵抗・床との当たりを計算して動かしたもの（物理計算）。縄の形は計算の結果で、手で描いたものではありません（ただし回る速さだけは、人が手ごたえを感じて手首の加減で合わせる分を、補助の力で一定に保っています）。手首は「ひじを脇につけ、手首で小さな円を描く」動きを与え、持ち手は親指側の端から縄が出て、手首は小指側へ曲げ（尺屈）、縄に引かれる向きへ傾けています。跳ぶ高さ・回数とこつ（頭を動かさない・速く回す・かかとを上げる）は二重跳びの練習動画の要点に合わせました。手首の角度そのものは動画から測れないため、推定です。</p>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -110,7 +110,7 @@ function airK(t){const u=ph(t); return u<TC?0:bell((u-TC)/TF);}
 
 // ---- 手首と持ち手（世界の座標で解析的に決める。縄の計算と人形の表示が同じ式を使う）
 const HAND={x:0.40, dy:0.0, z:0.20}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
-const HANDLE={len:0.115, rad:0.0125, tip:0.075, gy:-0.064, gz:0.02}; // 持ち手：長さ・太さ・縄が出る端までの距離（小指側）・握る位置（手の座標）
+const HANDLE={len:0.115, rad:0.0125, tip:-0.04, gy:-0.064, gz:0.02}; // 持ち手：長さ・太さ・縄が出る端（負＝親指側。縄は親指側の端から出て、持ち手の尻は小指側へ出る）・握る位置（手の座標）
 // 手首の円：角度 a と半径 r は、縄の計算の中で決まる（人が縄の位置を感じて回し方を合わせるのと同じ）。表示はその記録を使う
 let HT=null; // 記録：フレームごとの [a, r, θ]（θ：持ち手が縄に引かれて傾く角度）
 function wristAR(sd,t,a,r){const sx=sd==='R'?-1:1;
@@ -125,12 +125,13 @@ function wristPos(sd,t){const [a,r]=htAt(t); return wristAR(sd,t,a,r);}
 function handQuat(sd,t){return handQuatTh(sd,htAt(t)[2]);}
 function tipPos(sd,t){const [a,r,th]=htAt(t); return tipAR(sd,t,a,r,th);}
 const QBASE={};
-(function(){ // 握り：持ち手は下・少し前・少し外へ。こぶしは前、手のひらは内向き、親指が上
-  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; const h=v3(sx*0.28,-1,0.22).normalize(); const fw=v3(0,0.15,1); const f=fw.sub(h.clone().multiplyScalar(fw.dot(h))).normalize();
+(function(){ // 握り：こぶしは前、手のひらは内向き、親指が上。縄は親指側の端から出る
+  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; const h=v3(sx*0.25,-0.85,-0.45).normalize(); /* 小指側の向き：手首を小指側へ曲げる（尺屈）ので、持ち手の尻は下・後ろ（前腕の方）、親指側の端は前上へ */ const fw=v3(0,0.15,1); const f=fw.sub(h.clone().multiplyScalar(fw.dot(h))).normalize();
     const X=sd==='R'?h.clone():h.clone().negate(), Y=f.clone().negate(), Z=new THREE.Vector3().crossVectors(X,Y);
     QBASE[sd]=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X,Y,Z));});
 })();
 const qx=new THREE.Quaternion();
+const TH0=(()=>{const h=v3(0,-0.85,-0.45).normalize(); return [-h.y,-h.z];})(); // 親指側の端の向き（体の横から見た成分）。持ち手はこの向きから、縄に引かれる向きへ傾く
 function handleLocal(sd,s){const sx=sd==='R'?-1:1; return v3(-sx*s,HANDLE.gy,HANDLE.gz);} // 小指側への距離 s
 
 // ---- 縄の物理計算
@@ -166,7 +167,7 @@ function simulate(warm){ // warm 周期ぶん回して縄の回り方を合わ�
     const e=wrapA(psiU-(W0*t+PSIC));
     a=W0*t+PSIC+LEAD; r=TECH.r;
     // 持ち手は縄に引かれる向きへ傾く（真下を重くした向き）。急に向きを変えないように少し遅らせる
-    { const dy=X[4]-X[1], dz=X[5]-X[2], n=Math.hypot(dy,dz)||1; const tT=Math.max(-38*D,Math.min(38*D,-Math.atan2(dz/n,1.6-dy/n))); th+=(tT-th)*dt/0.03; }
+    { const dy=X[4]-X[1], dz=X[5]-X[2], n=Math.hypot(dy,dz)||1; const t0y=TH0[0], t0z=TH0[1], ay=1.6*t0y+dy/n, az=1.6*t0z+dz/n; const tT=Math.max(-35*D,Math.min(35*D,wrapA(Math.atan2(az,ay)-Math.atan2(t0z,t0y)))); th+=(tT-th)*dt/0.03; }
     const A=tipAR('L',t+dt,a,r,th), B=tipAR('R',t+dt,a,r,th);
     // 回る速さの補助：縄全体の回る速さ（角運動量から）を目標へ。各点を今動いている向きへ同じ割合で押す（形は変えない。人が手首の加減で行う調整の代わり）
     let Ln=0, In=0; for(let i=1;i<RN-1;i++){const j=i*3, y=X[j+1]-cy, z=X[j+2]-cz, vy=(X[j+1]-Xp[j+1])/dt, vz=(X[j+2]-Xp[j+2])/dt; Ln+=y*vz-z*vy; In+=y*y+z*z;}
@@ -244,7 +245,7 @@ const GBUF=new Float32Array(RN*3);
 const HANDLES={};
 ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; const g=new THREE.Group();
   const c=new THREE.Mesh(new THREE.CylinderGeometry(HANDLE.rad,HANDLE.rad*0.9,HANDLE.len,10),M(css('--grip')));
-  c.rotation.z=Math.PI/2; c.position.x=-sx*(HANDLE.tip-HANDLE.len/2); g.add(c);
+  c.rotation.z=Math.PI/2; c.position.x=-sx*(HANDLE.tip+HANDLE.len/2); g.add(c);
   const cap=new THREE.Mesh(new THREE.CylinderGeometry(HANDLE.rad*0.7,HANDLE.rad*0.5,0.012,8),M('#555'));
   cap.rotation.z=Math.PI/2; cap.position.x=-sx*HANDLE.tip; g.add(cap);
   g.position.set(0,HANDLE.gy,HANDLE.gz); J_['wr'+sd].add(g); HANDLES[sd]=g;});
