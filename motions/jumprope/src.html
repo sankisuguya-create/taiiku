@@ -128,7 +128,7 @@ function wristPos(sd,t){const [a,r]=htAt(t); return wristAR(sd,t,a,r);}
 function handQuat(sd,t){const h=htAt(t); return handQuatTh(sd,h[2],h[0]);}
 function tipPos(sd,t){const [a,r,th]=htAt(t); return tipAR(sd,t,a,r,th);}
 const QBASE={};
-const GRIPB=40*D, THZ=0.014; // 持ち手は手のひらの付け根から人差し指の付け根へ斜めに通る（指の向きから親指側へ40°）
+const SUPI=35*D, GRIPB=40*D, THZ=0.014; // 持ち手は手のひらの付け根から人差し指の付け根へ斜めに通る（指の向きから親指側へ40°）
 const HG={}; // 手の座標での持ち手：C＝中心、DL＝付け根（縄が出る端）への向き
 ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1; HG[sd]={C:v3(sx*0.01,-0.029,0.016), DL:v3(sx*Math.sin(GRIPB),-Math.cos(GRIPB),0.12).normalize()};});
 const DW=sd=>{const sx=sd==='R'?-1:1; return v3(sx*0.5,-0.75,0.40).normalize();}; // 付け根の向き（世界）：地面側・斜め外・少し前
@@ -137,7 +137,12 @@ const DW=sd=>{const sx=sd==='R'?-1:1; return v3(sx*0.5,-0.75,0.40).normalize();}
     const Zw=m.sub(d.clone().multiplyScalar(m.dot(d))).normalize(); let u=new THREE.Vector3().crossVectors(Zw,d); if(u.y<0) u.negate();
     const f=d.clone().multiplyScalar(Math.cos(GRIPB)).sub(u.clone().multiplyScalar(Math.sin(GRIPB))), th=d.clone().multiplyScalar(Math.sin(GRIPB)).add(u.clone().multiplyScalar(Math.cos(GRIPB)));
     const X=th.clone().multiplyScalar(sx), Y=f.clone().negate(), Z=new THREE.Vector3().crossVectors(X,Y);
-    QBASE[sd]=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X,Y,Z)); QBASE[sd].zCheck=Z.dot(Zw);});
+    let q=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X,Y,Z));
+    { // 前腕を外へ回す（回外）：前腕の内側（手のひら側）を内向きから少し上向きへ。付け根の向きは手首の曲げで保つ
+      const fa=v3(0,-0.35,1).normalize(); let best=null;
+      [1,-1].forEach(sg=>{const qs=new THREE.Quaternion().setFromAxisAngle(fa,sg*SUPI); const z=v3(0,0,1).applyQuaternion(qs.clone().multiply(q)); if(!best||z.y>best[0]) best=[z.y,qs];});
+      const q1=best[1].multiply(q), d1=d.clone().applyQuaternion(best[1]); q=new THREE.Quaternion().setFromUnitVectors(d1,d).multiply(q1); }
+    QBASE[sd]=q; QBASE[sd].zCheck=Z.dot(Zw);});
 })();
 const qx=new THREE.Quaternion();
 const TWSIGN={}; ['R','L'].forEach(sd=>{ TWSIGN[sd]=1; const base=handleLocal(sd).applyQuaternion(QBASE[sd]);
