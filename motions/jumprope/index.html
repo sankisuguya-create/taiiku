@@ -403,7 +403,7 @@ const TECHS={
           [0.22,'縄が足の下（1歩目）','左足で小さく跳ぶ間に縄が足の下を通る。速いケンケン跳びのつもりで。'],
           [0.42,'右足で着く','足を入れ替えて右足で着く。左ひざが前へ上がる。腕と手首の回し方は変えない。'],
           [0.64,'縄が足の下（2歩目）','右足で跳ぶ間に縄が通る。「いち、に」のリズムで、1歩に縄1回。']]},
- kick:{name:'キック跳び', P:1.68, Tc:0.22, steps:4, turns:4, be:0.03, r:0.025, hMin:14, hLift:30, tuck:0.00, back:[-0.40,-0.33], kick:[-0.585,0.49], pitch:[-8,12], lean:4,
+ kick:{name:'キック跳び', P:1.68, Tc:0.22, steps:4, turns:4, be:0.03, r:0.025, hMin:14, hLift:30, tuck:0.00, back:[-0.40,-0.33], kick:[-0.585,0.49], pitch:[-14,20], lean:4,
   phases:[[0,'右足で跳び、左足を後ろへ','右足だけで跳ぶ。左足はひざを曲げて後ろへ引く（ひざは前や上に動かさない）。'],
           [0.42,'左足を前へ出す','もう一度右足で跳び、左足を前へ振り出す（キック）。かかとは床につけない。'],
           [0.84,'入れかえて左足で跳ぶ','空中で足を入れかえ、左足で跳ぶ。右足を後ろへ引く。'],
@@ -583,7 +583,7 @@ function footState(sd,t){ // [足首の位置, かかとの角度(度), 床に�
 function kickFoot(sd,t){
   const sx=sd==='R'?-1:1, k=Math.floor(ph(t)/STEP)%4, u=phS(t), sup=i=>(i%4)<2?'R':'L', lift=Math.max(0,pelY(t)-YL);
   const ground=(h,l)=>v3(sx*FOOT.x, ankleH+Math.sin(h*D)*BALL+l, FOOT.z+BALL*(1-Math.cos(h*D)));
-  const FREE=[{y:TECH.back[0],z:TECH.back[1],h:40},{y:TECH.kick[0],z:TECH.kick[1],h:30}]; // 後ろへ引く（太ももは立てたまま、すねを後ろへ）・前へ出す（ひざを伸ばして前・斜め下へ）。股関節から足首までの高さ・前後
+  const FREE=[{y:TECH.back[0],z:TECH.back[1],h:40},{y:TECH.kick[0],z:TECH.kick[1],h:-15}]; // 後ろへ引く（太ももは立てたまま、すねを後ろへ）・前へ出す（ひざを伸ばして前・斜め下へ）。股関節から足首までの高さ・前後
   const freeIdx=i=>{const a=(i%4+4)%4; return (a%2);}; // その足が自由な2歩のうち何歩目か（0:後ろ 1:前）
   const freePos=i=>{const f=FREE[freeIdx(i)]; return [v3(sx*FOOT.x, pelY(t)+f.y, 0.035+f.z), f.h];}; // 股関節（腰の高さ）から測る：腰が上下しても脚の形が変わらない
   const airSup=()=>{const b=bell((u-TC)/TF); const g=ground(TECH.hLift,lift); g.y+=0.04*b; return [g, TECH.hLift+3*b];}; // 空中では足を少し引き上げる（つま先が床すれすれまで下がらない）
@@ -604,7 +604,7 @@ function bodyOnly(t){
   // 体はほぼまっすぐ、少しだけ前に傾ける。頭は動かさない（首で前傾を打ち消し、正面を見る）
   const ln=TECH.lean;
   const kp=kickPitch(t); // キック跳び：後ろへ引く間はやや反り、キックの時はやや前に折れる（重心を足の真上に保つ）
-  J_.pelvis.rotation.set(ln*0.4*D,0,0); J_.spine.rotation.set((ln*0.4+kp*0.5)*D,0,0); J_.chest.rotation.set((ln*0.2+kp*0.5)*D,0,0);
+  J_.pelvis.rotation.set((ln*0.4+kp*0.3)*D,0,0); J_.spine.rotation.set((ln*0.4+kp*0.35)*D,0,0); J_.chest.rotation.set((ln*0.2+kp*0.35)*D,0,0);
   J_.neck.rotation.set((-ln*0.6-kp*0.6)*D,0,0); J_.head.rotation.set((-ln*0.4-kp*0.4)*D,0,0);
   fig.root.updateMatrixWorld(true);
 }
@@ -653,7 +653,7 @@ function setPose(t){
     const T=fingers[sd].thumb; {const P=HG[sd].C.clone().add(HG[sd].DL.clone().multiplyScalar(0.05)).add(v3(0,0,HANDLE.rad+THZ)); T.tb.quaternion.setFromUnitVectors(v3(0,-1,0),P.sub(T.tb.position).normalize());} T.tj.rotation.set(-0.15,0,0); // 親指は持ち手の上に乗せ、付け根の方へ伸ばす
   });
   fig.root.updateMatrixWorld(true);
-  MQ.aimHead(v3(0,1.3,6),0.6);
+  MQ.aimHead(v3(0,0.55,4),0.6); // 目線は前の少し下（約10°）
   bodyShadow.position.set(0,0.002,0.05); bodyShadow.scale.setScalar(1-0.6*Math.min(1,lift/0.3));
 }
 function frameAt(t){
