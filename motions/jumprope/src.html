@@ -109,7 +109,7 @@ function heelAng(t){const u=ph(t); if(u<TC) return TECH.hMin+(TECH.hLift-TECH.hM
 function airK(t){const u=ph(t); return u<TC?0:bell((u-TC)/TF);}
 
 // ---- 手首と持ち手（世界の座標で解析的に決める。縄の計算と人形の表示が同じ式を使う）
-const HAND={x:0.30, dy:0.0, z:0.20}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
+const HAND={x:0.26, dy:0.0, z:0.32}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
 const HANDLE={len:0.12, rad:0.010, tip:0.072}; // 長さ・太さ・中心から付け根までの距離 // 持ち手：長さ・太さ・縄が出る端（負＝親指側。縄は親指側の端から出て、持ち手の尻は小指側へ出る）・握る位置（手の座標）
 // 手首の円：角度 a と半径 r は、縄の計算の中で決まる（人が縄の位置を感じて回し方を合わせるのと同じ）。表示はその記録を使う
 let HT=null; // 記録：フレームごとの [a, r, θ]（θ：持ち手が縄に引かれて傾く角度）
@@ -170,7 +170,7 @@ function simulate(){ // 1周期を記録する（形を決めて描くので、�
   const N=Math.round(P*RECHZ), rec=[], ht=[]; SIMLOG=[];
   for(let f=0;f<N;f++){const t=f/RECHZ, psi=W0*t+PSIC, a=psi+LEAD, r=TECH.r;
     // 持ち手は、付け根から出る縄の向き（輪の手元の向き）へ傾く。もとの向きを重くした向き、±35°まで
-    const ang=psi+BOW, ay=1.6*TH0[0]+Math.cos(ang), az=1.6*TH0[1]+Math.sin(ang), th=Math.max(-15*D,Math.min(15*D,0.5*wrapA(Math.atan2(az,ay)-t0)));
+    const ang=psi+BOW, ay=1.6*TH0[0]+Math.cos(ang), az=1.6*TH0[1]+Math.sin(ang), th=Math.max(-10*D,Math.min(10*D,0.5*wrapA(Math.atan2(az,ay)-t0)));
     bodyOnly(t); poseArm('L',t,a,r,th); poseArm('R',t,a,r,th); const A=handTip('L'), B=handTip('R');
     rec.push(ropeShape(t,psi,A,B,new Float32Array(RN*3))); ht.push([a,r,th]);}
   return {rec, ht};
@@ -249,21 +249,25 @@ function bodyOnly(t){
   fig.root.updateMatrixWorld(true);
 }
 // 腕と手：前腕の向きを基準にする。前腕のひねり（もとの量＋手首の円と同じ周期の小さな往復）と、手首の小さな曲げ（反り・小指側への曲げ）で持ち手の向きを作る
-const ELBIN=1.2, GL=0; const WP={}; // 手ごとの [ひねり, 反り, 横曲げ, ひねりの向き]（solveGrip で決める）
+const ELBIN=0.25, GL=0, TWX=60, WL=10; /* WL：手首の曲げの上限（度） */ const WP={}; // 手ごとの [ひねり, 反り, 横曲げ, ひねりの向き]（solveGrip で決める）
 function poseArm(sd,t,a,r,th){ const sx=sd==='R'?-1:1, w=WP[sd];
-  MQ.armIK(sd,wristAR(sd,t,a,r),v3(-sx*ELBIN,-0.3,-1)); // ひじは胴に寄せ（内へ曲がる）、前腕を外へ開く
+  MQ.armIK(sd,wristAR(sd,t,a,r),v3(-sx*ELBIN,-0.2,-1)); // ひじは胴に寄せ（内へ曲がる）、前腕を外へ開く
   J_['fr'+sd].quaternion.setFromAxisAngle(v3(0,1,0),w.tw+w.sg*TWIST*Math.cos(a||0));
   J_['wr'+sd].rotation.set(w.ex+th,0,w.dv,'YXZ'); fig.root.updateMatrixWorld(true); }
 function handTip(sd){ return J_['wr'+sd].localToWorld(handleLocal(sd)); }
-function solveGrip(){ // 付け根が地面側の斜め外を向くように、前腕のひねりと手首の小さな曲げを探す（手首は ±20° まで）
+function solveGrip(){ // 1) 前腕のひねり：前腕の内側（手のひら側＝前腕の座標の+Z）が正中線向き・やや上向きになる量。2) 手首の小さな曲げ（±25°）で付け根を地面側の斜め外へ
   bodyOnly(0);
-  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1, rom=MQ.ROM['fr'+sd].y, want=DW(sd); let best=null;
-    for(let tw=rom[0];tw<=rom[1];tw+=5) for(let ex=-GL;ex<=GL;ex+=5) for(let dv=-GL;dv<=GL;dv+=5){
-      WP[sd]={tw:tw*D,ex:ex*D,dv:dv*D,sg:0}; poseArm(sd,0,Math.PI/2,TECH.r,0);
-      const dir=HG[sd].DL.clone().transformDirection(J_['wr'+sd].matrixWorld); const c=Math.acos(Math.max(-1,Math.min(1,dir.dot(want))))/D+0.6*(Math.abs(ex)+Math.abs(dv));
-      if(!best||c<best[0]) best=[c,tw,ex,dv];}
-    WP[sd]={tw:best[1]*D,ex:best[2]*D,dv:best[3]*D,sg:0, err:best[0]}; poseArm(sd,0,Math.PI/2,TECH.r,0); WP[sd].dir=HG[sd].DL.clone().transformDirection(J_["wr"+sd].matrixWorld).toArray().map(v=>+v.toFixed(2));
-    poseArm(sd,0,Math.PI/2,TECH.r,0); const y0=handTip(sd).y; WP[sd].tw+=0.2; poseArm(sd,0,Math.PI/2,TECH.r,0); const y1=handTip(sd).y; WP[sd].tw-=0.2; WP[sd].sg=y1>y0?1:-1; }); // ひねると付け根が上がる向きを正に
+  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1, rom=MQ.ROM['fr'+sd].y, want=DW(sd), inner=v3(-sx,0.6,0).normalize(); let bt=null;
+    for(let tw=rom[0]-TWX;tw<=rom[1]+TWX;tw+=2){ WP[sd]={tw:tw*D,ex:0,dv:0,sg:0}; poseArm(sd,0,Math.PI/2,TECH.r,0);
+      const n=v3(0,0,1).transformDirection(J_['fr'+sd].matrixWorld); const c=-n.dot(inner); if(!bt||c<bt[0]) bt=[c,tw];}
+    let best=null;
+    for(let ex=-WL;ex<=WL;ex+=2.5) for(let dv=-WL;dv<=WL;dv+=2.5){
+      WP[sd]={tw:bt[1]*D,ex:ex*D,dv:dv*D,sg:0}; poseArm(sd,0,Math.PI/2,TECH.r,0);
+      const dir=HG[sd].DL.clone().transformDirection(J_['wr'+sd].matrixWorld); const c=Math.acos(Math.max(-1,Math.min(1,dir.dot(want))))/D+0.1*(Math.abs(ex)+Math.abs(dv));
+      if(!best||c<best[0]) best=[c,ex,dv];}
+    WP[sd]={tw:bt[1]*D,ex:best[1]*D,dv:best[2]*D,sg:0, err:best[0], innerDot:-bt[0]};
+    poseArm(sd,0,Math.PI/2,TECH.r,0); WP[sd].dir=HG[sd].DL.clone().transformDirection(J_['wr'+sd].matrixWorld).toArray().map(v=>+v.toFixed(2));
+    const y0=handTip(sd).y; WP[sd].tw+=0.2; poseArm(sd,0,Math.PI/2,TECH.r,0); const y1=handTip(sd).y; WP[sd].tw-=0.2; WP[sd].sg=y1>y0?1:-1; }); // ひねると付け根が上がる向きを正に
 }
 function setPose(t){
   bodyOnly(t);
