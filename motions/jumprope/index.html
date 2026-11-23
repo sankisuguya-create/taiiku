@@ -403,7 +403,7 @@ const TECHS={
           [0.22,'縄が足の下（1歩目）','左足で小さく跳ぶ間に縄が足の下を通る。速いケンケン跳びのつもりで。'],
           [0.42,'右足で着く','足を入れ替えて右足で着く。左ひざが前へ上がる。腕と手首の回し方は変えない。'],
           [0.64,'縄が足の下（2歩目）','右足で跳ぶ間に縄が通る。「いち、に」のリズムで、1歩に縄1回。']]},
- kick:{name:'キック跳び', P:1.68, Tc:0.22, steps:4, turns:4, be:0.03, r:0.025, hMin:14, hLift:30, tuck:0.00, back:[0.22,-0.24], kick:[0.10,0.30], lean:4,
+ kick:{name:'キック跳び', P:1.68, Tc:0.22, steps:4, turns:4, be:0.03, r:0.025, hMin:14, hLift:30, tuck:0.00, back:[0.22,-0.24], kick:[0.20,0.28], pitch:[-5,8], lean:4,
   phases:[[0,'右足で跳び、左足を後ろへ','右足だけで跳ぶ。左足はひざを曲げて後ろへ引く（ひざは前や上に動かさない）。'],
           [0.42,'左足を前へ出す','もう一度右足で跳び、左足を前へ振り出す（キック）。かかとは床につけない。'],
           [0.84,'入れかえて左足で跳ぶ','空中で足を入れかえ、左足で跳ぶ。右足を後ろへ引く。'],
@@ -551,16 +551,22 @@ function setLoopTube(m,P){ const pos=m.geometry.attributes.position.array, rad=m
   for(let i=0;i<TRN;i++){const p0=P[(i+TRN-1)%TRN], p1=P[(i+1)%TRN]; t.subVectors(p1,p0).normalize(); n.crossVectors(t,Math.abs(t.y)<0.9?up:side).normalize(); b.crossVectors(t,n);
     for(let k=0;k<TSIDE;k++){const a=k/TSIDE*TAU, c=Math.cos(a)*rad, si=Math.sin(a)*rad, o=(i*TSIDE+k)*3; pos[o]=P[i].x+n.x*c+b.x*si; pos[o+1]=P[i].y+n.y*c+b.y*si; pos[o+2]=P[i].z+n.z*c+b.z*si;}}
   m.geometry.attributes.position.needsUpdate=true; }
-const TRC=css('--trail2');
-const TRAILS={}; ['R','L'].forEach(sd=>{TRAILS['line'+sd]=makeLoopTube(0.004,TRC,1,false);});
-const ARROWS={}; ['R','L'].forEach(sd=>{ARROWS[sd]=[0,1,2].map(()=>{const c=new THREE.Mesh(new THREE.ConeGeometry(0.009,0.022,10),new THREE.MeshBasicMaterial({color:TRC,depthTest:false,depthWrite:false})); c.renderOrder=9; scene.add(c); return c;});}); // 回る向きを示す矢印
-const DOTS={}; ['R','L'].forEach(sd=>{const d=new THREE.Mesh(new THREE.SphereGeometry(0.009,12,8),new THREE.MeshBasicMaterial({color:TRC,depthTest:false,depthWrite:false})); d.renderOrder=9; scene.add(d); DOTS[sd]=d;});
+const TRC=css('--trail2'), TAILN=32;
+const TRAILS={}; ['R','L'].forEach(sd=>{TRAILS['line'+sd]=makeLoopTube(0.0018,TRC,0.25,false);}); // 輪全体はうすい線
+const TAILS={}, DOTS={};
+['R','L'].forEach(sd=>{ // 通り過ぎた所ほど薄く小さくなる点の列（尾）と、今の位置の光る点
+  TAILS[sd]=[]; for(let i=0;i<TAILN;i++){const k=1-i/TAILN; const m=new THREE.Mesh(new THREE.SphereGeometry(0.0035+0.004*k,8,6),new THREE.MeshBasicMaterial({color:TRC,transparent:true,opacity:0.85*k*k,depthTest:false,depthWrite:false})); m.renderOrder=8; scene.add(m); TAILS[sd].push(m);}
+  const g=new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.009,12,8),new THREE.MeshBasicMaterial({color:0xb6ffcf,depthTest:false,depthWrite:false})));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.017,12,8),new THREE.MeshBasicMaterial({color:0x2bd96a,transparent:true,opacity:0.55,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending})));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.03,12,8),new THREE.MeshBasicMaterial({color:0x2bd96a,transparent:true,opacity:0.22,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending})));
+  g.children.forEach(o=>o.renderOrder=10); scene.add(g); DOTS[sd]=g;});
 function updateTrails(t){ // 体と一緒に動く円として描く（手首の円の形が見えるように、腰の上下は今の高さにそろえる）
-  const yNow=pelY(t), bx=t=>TECH.steps===2?0.02*Math.cos(TAU*(t-TC/2)/P):0;
+  const yNow=pelY(t), off=tt=>yNow-pelY(tt)+0.02*airK(tt)-0.02*airK(t);
   ['R','L'].forEach(sd=>{const pts=[];
-    for(let i=0;i<TRN;i++){const tt=t-PR+PR*i/TRN, dy=yNow-pelY(tt)+0.02*airK(tt)-0.02*airK(t); const a=wristPos(sd,tt); pts.push(v3(a.x+bx(t)-bx(tt)*0,a.y+dy,a.z));}
+    for(let i=0;i<TRN;i++){const tt=t-PR+PR*i/TRN, a=wristPos(sd,tt); pts.push(v3(a.x,a.y+off(tt),a.z));}
     setLoopTube(TRAILS['line'+sd],pts);
-    ARROWS[sd].forEach((c,j)=>{const i=Math.floor(TRN*(j+0.5)/3), p0=pts[i], p1=pts[(i+1)%TRN]; c.position.copy(p0); c.quaternion.setFromUnitVectors(v3(0,1,0),p1.clone().sub(p0).normalize());});
+    TAILS[sd].forEach((m,i)=>{const tt=t-PR*0.8*(i+1)/TAILN, a=wristPos(sd,tt); m.position.set(a.x,a.y+off(tt),a.z);});
     DOTS[sd].position.copy(wristPos(sd,t));});
 }
 
@@ -601,10 +607,13 @@ function bodyOnly(t){
   body.quaternion.set(0,0,0,1); body.position.set(TECH.steps===2?0.02*Math.cos(TAU*(t-TC/2)/P):TECH.steps===4?-0.02*Math.cos(TAU*(t-STEP)/P):0,pelY(t)-hipY,0.035); // 駆け足跳びは床についている足の方へ腰が少し寄る
   // 体はほぼまっすぐ、少しだけ前に傾ける。頭は動かさない（首で前傾を打ち消し、正面を見る）
   const ln=TECH.lean;
-  J_.pelvis.rotation.set(ln*0.4*D,0,0); J_.spine.rotation.set(ln*0.4*D,0,0); J_.chest.rotation.set(ln*0.2*D,0,0);
-  J_.neck.rotation.set(-ln*0.6*D,0,0); J_.head.rotation.set(-ln*0.4*D,0,0);
+  const kp=kickPitch(t); // キック跳び：後ろへ引く間はやや反り、キックの時はやや前に折れる（重心を足の真上に保つ）
+  J_.pelvis.rotation.set(ln*0.4*D,0,0); J_.spine.rotation.set((ln*0.4+kp*0.5)*D,0,0); J_.chest.rotation.set((ln*0.2+kp*0.5)*D,0,0);
+  J_.neck.rotation.set((-ln*0.6-kp*0.6)*D,0,0); J_.head.rotation.set((-ln*0.4-kp*0.4)*D,0,0);
   fig.root.updateMatrixWorld(true);
 }
+function kickPitch(t){ if(TECH.steps!==4) return 0; // 1歩ごとの目標（後ろ・前・後ろ・前）を、歩の真ん中どうしの間でなめらかにつなぐ
+  const x=ph(t)/STEP-0.5, i=Math.floor(x), f=smooth(x-i), v=k=>TECH.pitch[((k%2)+2)%2]; return v(i)+(v(i+1)-v(i))*f; }
 // 腕と手：前腕の向きを基準にする。前腕のひねり（もとの量＋手首の円と同じ周期の小さな往復）と、手首の小さな曲げ（反り・小指側への曲げ）で持ち手の向きを作る
 const ELBIN=0.25, GL=0, TWX=60, WL=10; /* WL：手首の曲げの上限（度） */ const WP={}; // 手ごとの [ひねり, 反り, 横曲げ, ひねりの向き]（solveGrip で決める）
 function poseArm(sd,t,a,r,th){ const sx=sd==='R'?-1:1, w=WP[sd];
@@ -655,7 +664,7 @@ function frameAt(t){
   setPose(t);
   updateTube(rope,ropeAt(t,RBUF),RRAD);
   GHOSTS.forEach((l,g)=>{l.visible=showGhost; if(!showGhost) return; const a=l.geometry.attributes.position; ropeAt(t-(g+1)/150,GBUF); a.array.set(GBUF); a.needsUpdate=true;});
-  Object.values(TRAILS).forEach(l=>l.visible=showTrail); Object.values(ARROWS).flat().forEach(c=>c.visible=showTrail); Object.values(DOTS).forEach(d=>d.visible=showTrail);
+  Object.values(TRAILS).forEach(l=>l.visible=showTrail); Object.values(TAILS).flat().forEach(c=>c.visible=showTrail); Object.values(DOTS).forEach(d=>d.visible=showTrail);
   if(showTrail) updateTrails(t);
 }
 
