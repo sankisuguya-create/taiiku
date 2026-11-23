@@ -14,6 +14,10 @@
 
 各ページの操作：再生・速さ（とてもゆっくり／ゆっくり／実際の速さ／はやく）・局面へとぶ・見る向き・拡大縮小（2本指でも可）。
 
+## アプリ（GAS）
+
+単元ごとにまとめて配るアプリ：`gas/`（手順は `gas/README.md`）。一覧は `units.json`。main の最新を自動で読む。
+
 ## 作り方
 
 `docs/methodology/contact-driven-motion.md`（接点駆動法）。AIは `AGENTS.md` から読む。

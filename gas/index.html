@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_top">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+:root{
+  --bg:#eef3f6; --fg:#1d2a33; --muted:#5b6b76; --panel:#ffffff; --line:#d3dde4; --accent:#e0761c; --accent-fg:#ffffff;
+  --font:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font)}
+.wrap{max-width:960px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+h1{font-size:1.4rem;margin:0}
+.lead{margin:0;color:var(--muted);font-size:1rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (min-width:720px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+button{font:inherit;font-weight:700;cursor:pointer;border-radius:12px;border:2px solid var(--line);background:var(--panel);color:var(--fg)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.unit{height:112px;font-size:1.3rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.unit small{font-size:.85rem;color:var(--muted);font-weight:500}
+.act{height:72px;font-size:1.15rem}
+.back{height:56px;padding:0 20px;font-size:1rem;align-self:flex-start}
+.player{position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg)}
+.player.on{display:flex}
+.bar{display:flex;align-items:center;gap:16px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.bar h2{margin:0;font-size:1.15rem}
+.player iframe{flex:1;width:100%;border:0;background:var(--bg)}
+.msg{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;line-height:1.7}
+.ver{font-size:.75rem;color:var(--muted);margin:0}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap" id="home">
+  <h1>体育 うごきの教材</h1>
+  <p class="lead" id="lead">単元をえらぶ</p>
+  <div class="msg" id="msg" hidden></div>
+  <button class="back" id="toUnits" hidden>← 単元にもどる</button>
+  <div class="grid" id="units"></div>
+  <div class="grid" id="acts" hidden></div>
+  <p class="ver" id="ver">読み込み中…</p>
+</div>
+<div class="player" id="player">
+  <div class="bar"><button class="back" id="closeP">← もどる</button><h2 id="ptitle"></h2></div>
+  <iframe id="frame" title="うごきの教材"></iframe>
+</div>
+<script>
+var SHELL_VER = 1;
+var REPO = 'sankisuguya-create/taiiku';
+var HOSTS = ['https://cdn.jsdelivr.net', 'https://fastly.jsdelivr.net', 'https://gcore.jsdelivr.net'];
+var REF = null, SRC = '', UNITS = null, CUR = null;
+var $ = function (id) { return document.getElementById(id); };
+
+function withTimeout(p, ms) {
+  return new Promise(function (ok, ng) { var t = setTimeout(function () { ng(new Error('時間切れ')); }, ms); p.then(function (v) { clearTimeout(t); ok(v); }, function (e) { clearTimeout(t); ng(e); }); });
+}
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+function resolveLatest() {
+  return withTimeout(fetch('https://data.jsdelivr.com/v1/packages/gh/' + REPO + '/resolved?specifier=main'), 5000)
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (j) { if (!j || !/^[0-9a-f]{40}$/.test(j.version || '')) throw new Error('番号なし'); store('taiiku.ref', j.version); SRC = '最新'; return j.version; })
+    .catch(function () {
+      var last = store('taiiku.ref');
+      if (last) { SRC = '前回の番号'; return last; }
+      return new Promise(function (ok) {
+        if (window.google && google.script && google.script.run) google.script.run.withSuccessHandler(function (r) { SRC = '予備の設定'; ok(r); }).withFailureHandler(function () { SRC = '予備（main）'; ok('main'); }).getFallbackRef();
+        else { SRC = '予備（main）'; ok('main'); }
+      });
+    });
+}
+
+function fetchText(path) {
+  var i = 0;
+  function next() {
+    if (i >= HOSTS.length) return Promise.reject(new Error('読み込めません: ' + path));
+    var url = HOSTS[i++] + '/gh/' + REPO + '@' + REF + '/' + path;
+    return withTimeout(fetch(url), 8000).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).catch(next);
+  }
+  return next();
+}
+
+function showMsg(t) { $('msg').textContent = t; $('msg').hidden = !t; }
+
+function renderUnits() {
+  CUR = null; $('lead').textContent = '単元をえらぶ'; $('toUnits').hidden = true; $('acts').hidden = true; $('units').hidden = false;
+  var box = $('units'); box.innerHTML = '';
+  UNITS.units.forEach(function (u) {
+    var b = document.createElement('button'); b.className = 'unit'; b.id = 'unit-' + u.id;
+    b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = u.name; b.lastChild.textContent = u.actions.length + 'つの動き';
+    b.onclick = function () { renderActs(u); }; box.appendChild(b);
+  });
+}
+
+function renderActs(u) {
+  CUR = u; $('lead').textContent = u.name + '：動きをえらぶ'; $('toUnits').hidden = false; $('units').hidden = true; $('acts').hidden = false;
+  var box = $('acts'); box.innerHTML = '';
+  u.actions.forEach(function (a, i) {
+    var b = document.createElement('button'); b.className = 'act'; b.id = 'act-' + u.id + '-' + i; b.textContent = a.name;
+    b.onclick = function () { openAction(a); }; box.appendChild(b);
+  });
+}
+
+function openAction(a) {
+  $('ptitle').textContent = a.name; $('player').classList.add('on');
+  var f = $('frame'); f.removeAttribute('srcdoc'); f.onload = null;
+  fetchText(a.page).then(function (html) {
+    f.onload = function () {
+      try {
+        var d = f.contentDocument; if (!d) return;
+        if (a.tech) {
+          var st = d.createElement('style'); st.textContent = '#techs{display:none}'; d.head.appendChild(st);
+          var tries = 0, iv = setInterval(function () { var b = d.getElementById('tech-' + a.tech); if (b) { b.click(); clearInterval(iv); } else if (++tries > 50) clearInterval(iv); }, 100);
+        }
+      } catch (e) { }
+    };
+    f.srcdoc = html;
+  }).catch(function (e) { closePlayer(); showMsg('動きのページを読み込めませんでした（' + e.message + '）。通信を確かめて、もう一度えらんでください。'); });
+}
+
+function closePlayer() { $('player').classList.remove('on'); var f = $('frame'); f.onload = null; f.removeAttribute('srcdoc'); f.src = 'about:blank'; }
+
+$('toUnits').onclick = renderUnits;
+$('closeP').onclick = closePlayer;
+
+resolveLatest().then(function (ref) {
+  REF = ref;
+  $('ver').textContent = '版 ' + String(ref).slice(0, 7) + '（' + SRC + '）・器 ' + SHELL_VER;
+  return fetchText('units.json');
+}).then(function (t) {
+  UNITS = JSON.parse(t);
+  if ((UNITS.shellMin || 0) > SHELL_VER) showMsg('この器は古い版です（器 ' + SHELL_VER + '、必要 ' + UNITS.shellMin + '）。先生へ：gas/README.md の手順で、Code.gs と index.html を貼り直してください。');
+  renderUnits();
+}).catch(function (e) { showMsg('教材の一覧を読み込めませんでした（' + e.message + '）。通信を確かめて、ページを開き直してください。'); $('ver').textContent = ''; });
+</script>
+</body>
+</html>

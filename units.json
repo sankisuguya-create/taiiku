@@ -1,0 +1,24 @@
+{
+  "shellMin": 1,
+  "units": [
+    {"id": "vault", "name": "跳び箱", "actions": [
+      {"name": "開脚跳び", "page": "motions/vault/index.html", "tech": "kaikyaku"},
+      {"name": "かかえ込み跳び", "page": "motions/vault/index.html", "tech": "kakaekomi"},
+      {"name": "台上前転", "page": "motions/vault/index.html", "tech": "daijou"}
+    ]},
+    {"id": "mat", "name": "マット", "actions": [
+      {"name": "体育座り", "page": "motions/roll/index.html", "tech": "sit"},
+      {"name": "前転", "page": "motions/roll/index.html", "tech": "zenten"},
+      {"name": "側方倒立回転", "page": "motions/cartwheel/index.html"}
+    ]},
+    {"id": "ball", "name": "ボール運動", "actions": [
+      {"name": "チェストパス", "page": "motions/chestpass/index.html"}
+    ]},
+    {"id": "rope", "name": "縄跳び", "actions": [
+      {"name": "前回し", "page": "motions/jumprope/index.html", "tech": "mae"},
+      {"name": "駆け足跳び", "page": "motions/jumprope/index.html", "tech": "kake"},
+      {"name": "キック跳び", "page": "motions/jumprope/index.html", "tech": "kick"},
+      {"name": "二重跳び", "page": "motions/jumprope/index.html", "tech": "niju"}
+    ]}
+  ]
+}
