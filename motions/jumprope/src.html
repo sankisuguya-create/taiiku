@@ -299,8 +299,9 @@ function bodyOnly(t){
   J_.neck.rotation.set((-ln*0.6-kp*0.6)*D,0,0); J_.head.rotation.set((-ln*0.4-kp*0.4)*D,0,0);
   fig.root.updateMatrixWorld(true);
 }
-function kickPitch(t){ if(TECH.steps!==4) return 0; // 1歩ごとの目標（後ろ・前・後ろ・前）を、歩の真ん中どうしの間でなめらかにつなぐ
-  const x=ph(t)/STEP-0.5, i=Math.floor(x), f=smooth(x-i), v=k=>TECH.pitch[((k%2)+2)%2]; return v(i)+(v(i+1)-v(i))*f; }
+function kickPitch(t){ if(TECH.steps!==4) return 0; // 足の振りと同じ時に切り替える：縄が足の下を通り過ぎてから次の着地までに、反り⇔前傾
+  const k=Math.floor(ph(t)/STEP), u=phS(t), pass=TC+TF/2-(TECH.be||0)+0.03, w=smooth((u-pass)/(STEP-pass)), v=i=>TECH.pitch[((i%2)+2)%2];
+  return v(k)+(v(k+1)-v(k))*w; }
 // 腕と手：前腕の向きを基準にする。前腕のひねり（もとの量＋手首の円と同じ周期の小さな往復）と、手首の小さな曲げ（反り・小指側への曲げ）で持ち手の向きを作る
 const ELBIN=0.25, GL=0, TWX=60, WL=10; /* WL：手首の曲げの上限（度） */ const WP={}; // 手ごとの [ひねり, 反り, 横曲げ, ひねりの向き]（solveGrip で決める）
 function poseArm(sd,t,a,r,th){ const sx=sd==='R'?-1:1, w=WP[sd];
