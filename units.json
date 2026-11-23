@@ -77,6 +77,11 @@
           "tech": "kousa"
         },
         {
+          "name": "あや跳び",
+          "page": "motions/jumprope/index.html",
+          "tech": "aya"
+        },
+        {
           "name": "二重跳び",
           "page": "motions/jumprope/index.html",
           "tech": "niju"
