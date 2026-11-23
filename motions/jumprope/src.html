@@ -94,6 +94,11 @@ const TECHS={
           [0.22,'縄が足の下（1歩目）','左足で小さく跳ぶ間に縄が足の下を通る。速いケンケン跳びのつもりで。'],
           [0.42,'右足で着く','足を入れ替えて右足で着く。左ひざが前へ上がる。腕と手首の回し方は変えない。'],
           [0.64,'縄が足の下（2歩目）','右足で跳ぶ間に縄が通る。「いち、に」のリズムで、1歩に縄1回。']]},
+ kick:{name:'キック跳び', P:1.68, Tc:0.22, steps:4, turns:4, be:0.03, r:0.025, hMin:14, hLift:30, tuck:0.00, back:[0.22,-0.24], kick:[0.10,0.30], lean:4,
+  phases:[[0,'右足で跳び、左足を後ろへ','右足だけで跳ぶ。左足はひざを曲げて後ろへ引く（ひざは前や上に動かさない）。'],
+          [0.42,'左足を前へ出す','もう一度右足で跳び、左足を前へ振り出す（キック）。かかとは床につけない。'],
+          [0.84,'入れかえて左足で跳ぶ','空中で足を入れかえ、左足で跳ぶ。右足を後ろへ引く。'],
+          [1.26,'右足を前へ出す','左足でもう一度跳び、右足を前へ振り出す。1歩に縄1回。']]},
  niju:{name:'二重跳び', P:0.62, Tc:0.18, turns:2, be:0.02, r:0.030, hMin:8, hLift:36, tuck:0.06, lean:6,
   phases:[[0,'着地','つま先で着き、すぐ次の踏み切りへ。かかとを上げたまま、ひざで少しだけ受ける。'],
           [0.12,'踏み切り（強く）','前回しより高く跳ぶ（約24cm）。跳び上がるのと同時に手首を速く回す。'],
@@ -163,7 +168,7 @@ const LEAD=1.4; // 手首が縄より先を回る角度（ラジアン）
 const RN=41, RRAD=0.006, RAD=0.98, Q=0.28, BOW=0.45, OUTW=0.09; // OUTW：正面から見て輪を手の幅より外へふくらませる量
 let REC=null, RECHZ=240, RECN=0;
 const wrapA=x=>Math.atan2(Math.sin(x),Math.cos(x));
-function targetBottoms(){const mid=TC+TF/2-(TECH.be??0); if(TECH.turns===1) return [mid]; if(TECH.steps===2) return [mid,mid+STEP]; return [mid-PR/2,mid+PR/2];}
+function targetBottoms(){const mid=TC+TF/2-(TECH.be??0); if(TECH.turns===1) return [mid]; if(TECH.steps>=2) return [mid,mid+STEP]; return [mid-PR/2,mid+PR/2];}
 let SIMLOG=null;
 function ropeShape(t,psi,A,B,out){ const [cy,cz]=[pelY(t)+HAND.dy-0.02*airK(t), HAND.z];
   for(let i=0;i<RN;i++){const s=i/(RN-1), w=Math.pow(Math.sin(Math.PI*s),Q), ang=psi+BOW*(1-Math.sin(Math.PI*s));
@@ -254,6 +259,7 @@ function updateTrails(t){ // 体と一緒に動く円として描く（手首の
 const FOOT={x:0.058, z:0.0}; // 両足をそろえて跳ぶ
 function footState(sd,t){ // [足首の位置, かかとの角度(度), 床についているか]
   const sx=sd==='R'?-1:1;
+  if(TECH.steps===4) return kickFoot(sd,t);
   if(TECH.steps===2){ // 駆け足跳び：左右の足が1歩ずつ交互に床につく。浮いている足はひざを前へ少し上げる
     const tau=(((t-(sd==='L'?0:STEP))%P)+P)%P;
     if(tau<TC){ const h=TECH.hMin+(TECH.hLift-TECH.hMin)*(1-Math.sin(Math.PI*tau/TC));
@@ -262,10 +268,28 @@ function footState(sd,t){ // [足首の位置, かかとの角度(度), 床に�
     return [v3(sx*FOOT.x, ankleH+Math.sin(h*D)*BALL+lift+TECH.knee*sw, FOOT.z+BALL*(1-Math.cos(h*D))+0.05*sw), h, false]; }
   const h=heelAng(t), lift=Math.max(0,pelY(t)-YL), ak=airK(t);
   return [v3(sx*FOOT.x, ankleH+Math.sin(h*D)*BALL+lift+TECH.tuck*ak, FOOT.z+BALL*(1-Math.cos(h*D))-TECH.tuck*1.2*ak), h, ak<=0.01]; }
+// キック跳び（スイングキック）：右足で2回（左足は後ろへ引く→前へ出す）、空中で入れかえて左足で2回（右足は後ろ→前）。1歩に縄1回
+function kickFoot(sd,t){
+  const sx=sd==='R'?-1:1, k=Math.floor(ph(t)/STEP)%4, u=phS(t), sup=i=>(i%4)<2?'R':'L', lift=Math.max(0,pelY(t)-YL);
+  const ground=(h,l)=>v3(sx*FOOT.x, ankleH+Math.sin(h*D)*BALL+l, FOOT.z+BALL*(1-Math.cos(h*D)));
+  const FREE=[{y:TECH.back[0],z:TECH.back[1],h:40},{y:TECH.kick[0],z:TECH.kick[1],h:55}]; // 後ろへ引く・前へ出す（腰の高さに対する足首の高さ・前後）
+  const freeIdx=i=>{const a=(i%4+4)%4; return (a%2);}; // その足が自由な2歩のうち何歩目か（0:後ろ 1:前）
+  const freePos=i=>{const f=FREE[freeIdx(i)]; return [v3(sx*FOOT.x, ankleH+f.y+lift, f.z), f.h];};
+  const airSup=()=>{const b=bell((u-TC)/TF); const g=ground(TECH.hLift,lift); g.y+=0.04*b; return [g, TECH.hLift+3*b];}; // 空中では足を少し引き上げる（つま先が床すれすれまで下がらない）
+  const blend=(A,B,w)=>[A[0].clone().lerp(B[0],w), A[1]+(B[1]-A[1])*w];
+  const pass=TC+TF/2-(TECH.be||0)+0.03, w=smooth((u-pass)/(STEP-pass)), nk=k+1; // 足を振るのは縄が足の下を通り過ぎてから
+  if(sup(k)===sd){
+    if(u<TC){const h=TECH.hMin+(TECH.hLift-TECH.hMin)*(1-Math.sin(Math.PI*u/TC)); return [ground(h,0),h,true];}
+    const A=airSup(); if(sup(nk)===sd) return [...A,false];
+    const B=freePos(nk); return [...blend(A,B,w),false]; }
+  const A=freePos(k); if(u<TC) return [...A,false];
+  if(sup(nk)!==sd) return [...blend(A,freePos(nk),w),false];
+  return [...blend(A,[ground(TECH.hLift,lift),TECH.hLift],w),false]; // 空中で入れかえて、この足で着地へ
+}
 function footTgt(sd,t){ return footState(sd,t)[0]; } // 足首の位置：床についている間は母指球を支点にかかとが上下、空中は体と一緒に上がる
 function bodyOnly(t){
   ['R','L'].forEach(sd=>{J_['cl'+sd].rotation.set(0,0,0);J_['fr'+sd].quaternion.set(0,0,0,1);});
-  body.quaternion.set(0,0,0,1); body.position.set(TECH.steps===2?0.02*Math.cos(TAU*(t-TC/2)/P):0,pelY(t)-hipY,0.035); // 駆け足跳びは床についている足の方へ腰が少し寄る
+  body.quaternion.set(0,0,0,1); body.position.set(TECH.steps===2?0.02*Math.cos(TAU*(t-TC/2)/P):TECH.steps===4?-0.02*Math.cos(TAU*(t-STEP)/P):0,pelY(t)-hipY,0.035); // 駆け足跳びは床についている足の方へ腰が少し寄る
   // 体はほぼまっすぐ、少しだけ前に傾ける。頭は動かさない（首で前傾を打ち消し、正面を見る）
   const ln=TECH.lean;
   J_.pelvis.rotation.set(ln*0.4*D,0,0); J_.spine.rotation.set(ln*0.4*D,0,0); J_.chest.rotation.set(ln*0.2*D,0,0);
