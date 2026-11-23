@@ -418,8 +418,8 @@ function heelAng(t){const u=ph(t); if(u<TC) return TECH.hMin+(TECH.hLift-TECH.hM
 function airK(t){const u=ph(t); return u<TC?0:bell((u-TC)/TF);}
 
 // ---- 手首と持ち手（世界の座標で解析的に決める。縄の計算と人形の表示が同じ式を使う）
-const HAND={x:0.40, dy:0.0, z:0.20}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
-const HANDLE={len:0.115, rad:0.0125, tip:-0.04, gy:-0.064, gz:0.02}; // 持ち手：長さ・太さ・縄が出る端（負＝親指側。縄は親指側の端から出て、持ち手の尻は小指側へ出る）・握る位置（手の座標）
+const HAND={x:0.28, dy:0.0, z:0.20}; // 手首の中心：左右（体の中心から）、腰の高さからの上、前
+const HANDLE={len:0.115, rad:0.0115, tip:-0.04, gy:-0.0475, gz:0.0245}; // 持ち手：長さ・太さ・縄が出る端（負＝親指側。縄は親指側の端から出て、持ち手の尻は小指側へ出る）・握る位置（手の座標）
 // 手首の円：角度 a と半径 r は、縄の計算の中で決まる（人が縄の位置を感じて回し方を合わせるのと同じ）。表示はその記録を使う
 let HT=null; // 記録：フレームごとの [a, r, θ]（θ：持ち手が縄に引かれて傾く角度）
 function wristAR(sd,t,a,r){const sx=sd==='R'?-1:1;
@@ -609,7 +609,7 @@ function setPose(t){
     fig.root.updateMatrixWorld(true);
     setWorldQuat(J_['wr'+sd],handQuat(sd,t)); MQ.distributeTwist(sd);
     // こぶしで持ち手を握る
-    fingers[sd].forEach(f=>{f.base.rotation.set(-78*D,0,f.spread*2*D); f.j2.rotation.set(-85*D,0,0);});
+    fingers[sd].forEach(f=>{f.base.rotation.set(-55*D,0,f.spread*2*D); f.j2.rotation.set(-65*D,0,0);});
     const T=fingers[sd].thumb; T.tb.rotation.set(-0.9,0,T.sx*25*D); T.tj.rotation.set(-0.5,0,0);
   });
   fig.root.updateMatrixWorld(true);
@@ -690,7 +690,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 // 検証用
-window.__motion={rom:MQ.ROM,DUR:1,setPose:t=>frameAt(t),J:J_,headMesh:MQ.headMesh,armLen:L1+L2,legLen:T1+T2,
+window.__motion={MQ,HANDLES,HANDLE,rom:MQ.ROM,DUR:1,setPose:t=>frameAt(t),J:J_,headMesh:MQ.headMesh,armLen:L1+L2,legLen:T1+T2,
   rope:t=>Array.from(ropeAt(t,new Float32Array(RN*3))), tech:()=>techKey, info:()=>({P,TC,TF,PR,YL,DIP,log:SIMLOG,bottoms:REC?bottomTimes(REC):[],target:targetBottoms()}),
   useTech, view:(a,e,z,f)=>{az=a;el=e;zoom=z;focus=f||"body";dirty=true;},
   contacts:[['footL','anL','hpL','L'],['footR','anR','hpR','R']].map(([name,joint,root,sd])=>({name,joint,root,reach:T1+T2,at:t=>ph(t)<TC?Object.assign({w:1},footTgt(sd,t)):null})),
