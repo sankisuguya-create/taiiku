@@ -8,7 +8,7 @@
   --bg:#eef3f6; --fg:#1d2a33; --muted:#5b6b76; --panel:#ffffff; --line:#d3dde4;
   --stage:#dfe8ee; --accent:#e0761c; --accent-fg:#ffffff;
   --right:#1f4b99; --left:#9cc8f0; --joint:#e0761c; --skin:#e9c7a2; --shirt:#fbfcfd;
-  --rope:#c2255c; --grip:#f2c230; --trail:#e0761c; --glow:#14c8ff;
+  --rope:#c2255c; --grip:#f2c230; --trail:#e0761c; --trail2:#0b7a3b;
   --font:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -130,7 +130,7 @@ function buildMannequin(THREE, css){
   [J_.spine,J_.spine2].forEach(j=>joint(j,G(.018)));
   // 背中の印：肩甲骨のマーク。背中の面に貼った絵（左肩甲骨＝後ろから見て「」」、右肩甲骨＝その左右反転。内側の縦線＋下の横線、灰色）
   // 胸の回転体と同じ形の薄い面（左右に分けて）に描く。腕を上げると絵が少し下がり、下の角が外へ回る（applyRhythm）
-  const scap={};
+  const scap={}, paints=[]; // paints：背中と顔の絵（針金の見た目では消す）
   [['L',1],['R',-1]].forEach(([sd,sx])=>{ // sx=1：人形の左（+X）
     const c=document.createElement('canvas'); c.width=128; c.height=256; const x=c.getContext('2d');
     // u：左は外側→背骨、右は背骨→外側。縦線は背骨寄り、横線は下で外へ
@@ -141,7 +141,7 @@ function buildMannequin(THREE, css){
     const pts=[[chestH*.12,.0855],[chestH*.45,.097],[chestH*.78,.0955]].map(([y,r])=>new THREE.Vector2(G(r)*1.03,y));
     const phi0=sx>0?Math.PI/2+0.35:Math.PI, phiL=Math.PI/2-0.35;      // phi=π が背中の中央
     const patch=new THREE.Mesh(new THREE.LatheGeometry(pts,16,phi0,phiL),new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
-    patch.scale.z=DEP; patch.userData.fixed=true; J_.chest.add(patch);   // 見た目の切り替えで材質を変えない
+    patch.scale.z=DEP; patch.userData.fixed=true; paints.push(patch); J_.chest.add(patch);   // 見た目の切り替えで材質を変えない
     scap[sd]=tex;
   });
   // 首・頭（鼻で向きを示す）
@@ -158,7 +158,7 @@ function buildMannequin(THREE, css){
     const tex=new THREE.CanvasTexture(c);
     const g=new THREE.SphereGeometry(1.012,32,20,Math.PI/2-0.75,1.5,Math.PI*0.3,Math.PI*0.42);
     const face=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
-    face.scale.copy(headMesh.scale); face.position.copy(headMesh.position); face.userData.fixed=true; J_.head.add(face);
+    face.scale.copy(headMesh.scale); face.position.copy(headMesh.position); face.userData.fixed=true; paints.push(face); J_.head.add(face);
   }
   [-1,1].forEach(x=>mesh(new THREE.SphereGeometry(hh*0.035,8,6),'A',J_.head,x*hh*0.14,hh*0.56,hh*0.39,{wireOnly:true}));
   // ---- 手足 ----
@@ -318,9 +318,9 @@ function buildMannequin(THREE, css){
       const e=new THREE.Euler().setFromQuaternion(j.quaternion,'YXZ'), r=ROM[n], c=(v,[a,b])=>Math.max(a*D,Math.min(b*D,v));
       j.rotation.set(c(e.x,r.x),c(e.y,r.y),c(e.z,r.z),'YXZ'); j.updateMatrixWorld(true);});
   }
-  function showHead(on){ headParts.forEach(o=>{ o.userData.hid=!on; o.visible=on&&!(o.userData.wireOnly&&!wireOn); }); }
+  function showHead(on){ headParts.forEach(o=>{ o.userData.hid=!on; o.visible=on&&!(o.userData.wireOnly&&!wireOn)&&!(wireOn&&paints.includes(o)); }); }
   let wireOn=false; const _setSkin=setSkin;
-  function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); }
+  function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); paints.forEach(o=>{o.visible=!wireOn&&!o.userData.hid;}); }
   const dims={L1:ARM1,L2:ARM2,T1:hipY-L(R.knee),T2:L(R.knee-R.ankle),hipY,chestH,ankleH:hipY-(hipY-L(R.knee))-L(R.knee-R.ankle),ball:L(R.footL)*0.55,footH:L(R.ankle)};
   // 腕・脚が体の中心線を越えて交差しないように、目標点を自分の側へ寄せる（世界の座標で受けて返す）
   function noCross(sd,target,kind){
@@ -536,7 +536,7 @@ const HANDLES={};
   g.position.copy(H.C); J_['wr'+sd].add(g); HANDLES[sd]=g;});
 // 手首の通り道（1回まわる間の線）と、縄の出る端の通り道
 const TRN=64, TSIDE=8;
-function makeLoopTube(rad,color,op,add){ // 閉じた輪の管（手首の通り道を光る線として描く。体の陰でも見えるように深さを無視して上に重ねる）
+function makeLoopTube(rad,color,op,add){ // 閉じた輪の管 // 閉じた輪の管（手首の通り道を光る線として描く。体の陰でも見えるように深さを無視して上に重ねる）
   const g=new THREE.BufferGeometry(), pos=new Float32Array(TRN*TSIDE*3), idx=[];
   for(let i=0;i<TRN;i++) for(let k=0;k<TSIDE;k++){const a=i*TSIDE+k, b=i*TSIDE+(k+1)%TSIDE, c=((i+1)%TRN)*TSIDE+k, d=((i+1)%TRN)*TSIDE+(k+1)%TSIDE; idx.push(a,c,b,b,c,d);}
   g.setIndex(idx); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
@@ -546,17 +546,16 @@ function setLoopTube(m,P){ const pos=m.geometry.attributes.position.array, rad=m
   for(let i=0;i<TRN;i++){const p0=P[(i+TRN-1)%TRN], p1=P[(i+1)%TRN]; t.subVectors(p1,p0).normalize(); n.crossVectors(t,Math.abs(t.y)<0.9?up:side).normalize(); b.crossVectors(t,n);
     for(let k=0;k<TSIDE;k++){const a=k/TSIDE*TAU, c=Math.cos(a)*rad, si=Math.sin(a)*rad, o=(i*TSIDE+k)*3; pos[o]=P[i].x+n.x*c+b.x*si; pos[o+1]=P[i].y+n.y*c+b.y*si; pos[o+2]=P[i].z+n.z*c+b.z*si;}}
   m.geometry.attributes.position.needsUpdate=true; }
-const GLOW=css('--glow');
-const TRAILS={}; ['R','L'].forEach(sd=>{TRAILS['core'+sd]=makeLoopTube(0.0035,0xffffff,0.95,false); TRAILS['glow'+sd]=makeLoopTube(0.011,GLOW,0.55,true); TRAILS['halo'+sd]=makeLoopTube(0.022,GLOW,0.22,true);});
-const DOTS={}; ['R','L'].forEach(sd=>{const g=new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.008,12,8),new THREE.MeshBasicMaterial({color:0xffffff,depthTest:false,depthWrite:false})));
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.02,12,8),new THREE.MeshBasicMaterial({color:GLOW,transparent:true,opacity:0.5,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending})));
-  g.children.forEach(o=>o.renderOrder=9); scene.add(g); DOTS[sd]=g;});
+const TRC=css('--trail2');
+const TRAILS={}; ['R','L'].forEach(sd=>{TRAILS['line'+sd]=makeLoopTube(0.004,TRC,1,false);});
+const ARROWS={}; ['R','L'].forEach(sd=>{ARROWS[sd]=[0,1,2].map(()=>{const c=new THREE.Mesh(new THREE.ConeGeometry(0.009,0.022,10),new THREE.MeshBasicMaterial({color:TRC,depthTest:false,depthWrite:false})); c.renderOrder=9; scene.add(c); return c;});}); // 回る向きを示す矢印
+const DOTS={}; ['R','L'].forEach(sd=>{const d=new THREE.Mesh(new THREE.SphereGeometry(0.009,12,8),new THREE.MeshBasicMaterial({color:TRC,depthTest:false,depthWrite:false})); d.renderOrder=9; scene.add(d); DOTS[sd]=d;});
 function updateTrails(t){ // 体と一緒に動く円として描く（手首の円の形が見えるように、腰の上下は今の高さにそろえる）
   const yNow=pelY(t), bx=t=>TECH.steps===2?0.02*Math.cos(TAU*(t-TC/2)/P):0;
   ['R','L'].forEach(sd=>{const pts=[];
     for(let i=0;i<TRN;i++){const tt=t-PR+PR*i/TRN, dy=yNow-pelY(tt)+0.02*airK(tt)-0.02*airK(t); const a=wristPos(sd,tt); pts.push(v3(a.x+bx(t)-bx(tt)*0,a.y+dy,a.z));}
-    ['core','glow','halo'].forEach(k=>setLoopTube(TRAILS[k+sd],pts));
+    setLoopTube(TRAILS['line'+sd],pts);
+    ARROWS[sd].forEach((c,j)=>{const i=Math.floor(TRN*(j+0.5)/3), p0=pts[i], p1=pts[(i+1)%TRN]; c.position.copy(p0); c.quaternion.setFromUnitVectors(v3(0,1,0),p1.clone().sub(p0).normalize());});
     DOTS[sd].position.copy(wristPos(sd,t));});
 }
 
@@ -632,7 +631,7 @@ function frameAt(t){
   setPose(t);
   updateTube(rope,ropeAt(t,RBUF),RRAD);
   GHOSTS.forEach((l,g)=>{l.visible=showGhost; if(!showGhost) return; const a=l.geometry.attributes.position; ropeAt(t-(g+1)/150,GBUF); a.array.set(GBUF); a.needsUpdate=true;});
-  Object.values(TRAILS).forEach(l=>l.visible=showTrail); Object.values(DOTS).forEach(d=>d.visible=showTrail);
+  Object.values(TRAILS).forEach(l=>l.visible=showTrail); Object.values(ARROWS).flat().forEach(c=>c.visible=showTrail); Object.values(DOTS).forEach(d=>d.visible=showTrail);
   if(showTrail) updateTrails(t);
 }
 

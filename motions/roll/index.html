@@ -128,7 +128,7 @@ function buildMannequin(THREE, css){
   [J_.spine,J_.spine2].forEach(j=>joint(j,G(.018)));
   // 背中の印：肩甲骨のマーク。背中の面に貼った絵（左肩甲骨＝後ろから見て「」」、右肩甲骨＝その左右反転。内側の縦線＋下の横線、灰色）
   // 胸の回転体と同じ形の薄い面（左右に分けて）に描く。腕を上げると絵が少し下がり、下の角が外へ回る（applyRhythm）
-  const scap={};
+  const scap={}, paints=[]; // paints：背中と顔の絵（針金の見た目では消す）
   [['L',1],['R',-1]].forEach(([sd,sx])=>{ // sx=1：人形の左（+X）
     const c=document.createElement('canvas'); c.width=128; c.height=256; const x=c.getContext('2d');
     // u：左は外側→背骨、右は背骨→外側。縦線は背骨寄り、横線は下で外へ
@@ -139,7 +139,7 @@ function buildMannequin(THREE, css){
     const pts=[[chestH*.12,.0855],[chestH*.45,.097],[chestH*.78,.0955]].map(([y,r])=>new THREE.Vector2(G(r)*1.03,y));
     const phi0=sx>0?Math.PI/2+0.35:Math.PI, phiL=Math.PI/2-0.35;      // phi=π が背中の中央
     const patch=new THREE.Mesh(new THREE.LatheGeometry(pts,16,phi0,phiL),new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
-    patch.scale.z=DEP; patch.userData.fixed=true; J_.chest.add(patch);   // 見た目の切り替えで材質を変えない
+    patch.scale.z=DEP; patch.userData.fixed=true; paints.push(patch); J_.chest.add(patch);   // 見た目の切り替えで材質を変えない
     scap[sd]=tex;
   });
   // 首・頭（鼻で向きを示す）
@@ -156,7 +156,7 @@ function buildMannequin(THREE, css){
     const tex=new THREE.CanvasTexture(c);
     const g=new THREE.SphereGeometry(1.012,32,20,Math.PI/2-0.75,1.5,Math.PI*0.3,Math.PI*0.42);
     const face=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:tex,transparent:true,depthWrite:false}));
-    face.scale.copy(headMesh.scale); face.position.copy(headMesh.position); face.userData.fixed=true; J_.head.add(face);
+    face.scale.copy(headMesh.scale); face.position.copy(headMesh.position); face.userData.fixed=true; paints.push(face); J_.head.add(face);
   }
   [-1,1].forEach(x=>mesh(new THREE.SphereGeometry(hh*0.035,8,6),'A',J_.head,x*hh*0.14,hh*0.56,hh*0.39,{wireOnly:true}));
   // ---- 手足 ----
@@ -316,9 +316,9 @@ function buildMannequin(THREE, css){
       const e=new THREE.Euler().setFromQuaternion(j.quaternion,'YXZ'), r=ROM[n], c=(v,[a,b])=>Math.max(a*D,Math.min(b*D,v));
       j.rotation.set(c(e.x,r.x),c(e.y,r.y),c(e.z,r.z),'YXZ'); j.updateMatrixWorld(true);});
   }
-  function showHead(on){ headParts.forEach(o=>{ o.userData.hid=!on; o.visible=on&&!(o.userData.wireOnly&&!wireOn); }); }
+  function showHead(on){ headParts.forEach(o=>{ o.userData.hid=!on; o.visible=on&&!(o.userData.wireOnly&&!wireOn)&&!(wireOn&&paints.includes(o)); }); }
   let wireOn=false; const _setSkin=setSkin;
-  function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); }
+  function setSkin2(k){ wireOn=k==='wire'; _setSkin(k); paints.forEach(o=>{o.visible=!wireOn&&!o.userData.hid;}); }
   const dims={L1:ARM1,L2:ARM2,T1:hipY-L(R.knee),T2:L(R.knee-R.ankle),hipY,chestH,ankleH:hipY-(hipY-L(R.knee))-L(R.knee-R.ankle),ball:L(R.footL)*0.55,footH:L(R.ankle)};
   // 腕・脚が体の中心線を越えて交差しないように、目標点を自分の側へ寄せる（世界の座標で受けて返す）
   function noCross(sd,target,kind){
