@@ -1,0 +1,46 @@
+# flow-line-guide の作戦ボード（guides/linepb/board/ と立体の部品）が変わったら、
+# 1枚にまとめた linepb/board/index.html を作り直して、このリポジトリの main に書き込む。
+# 学校に届くのは、そのあと学習BASE（learning-base）にできる「教科の版を上げる」PR をマージした時。
+# 1時間ごとに見る。すぐ見たい時は Actions の「作戦ボードを取りこむ」→ Run workflow。
+# flow-line-guide を非公開にした時は、読める鍵（fine-grained トークン：flow-line-guide の Contents を Read）を
+# このリポジトリの Settings → Secrets and variables → Actions に FLG_TOKEN として登録する。
+name: 作戦ボードを取りこむ
+
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-board
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: flow-line-guide を取ってくる
+        env:
+          FLG_TOKEN: ${{ secrets.FLG_TOKEN }}
+        run: |
+          if [ -n "$FLG_TOKEN" ]; then URL="https://x-access-token:${FLG_TOKEN}@github.com/sankisuguya-create/flow-line-guide.git"; else URL="https://github.com/sankisuguya-create/flow-line-guide.git"; fi
+          git clone --depth 1 --quiet "$URL" flg
+
+      - name: 作戦ボードを組み立てる（中身が同じなら書きかえない）
+        run: node tools/build-board.cjs flg
+
+      - name: 変わっていれば main に書き込む
+        run: |
+          rm -rf flg
+          if git diff --quiet -- linepb/board/index.html; then echo "変わりなし"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          SRC=$(grep -o 'flow-line-guide@[0-9a-f]\{7\}' linepb/board/index.html | head -1)
+          git add linepb/board/index.html
+          git commit -m "作戦ボードを取りこむ（${SRC}）"
+          git push origin HEAD:main
