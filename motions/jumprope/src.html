@@ -84,12 +84,12 @@ const bell=u=>u<=0||u>=1?0:Math.sin(Math.PI*u)**2;
 // r：手首が描く円の半径、hMin・hLift：かかとの上がり（床についている間の最小・踏み切りの瞬間）、knee：ひざの曲げの目安
 // tuck：空中で足を後ろへたたむ量（二重跳びの2回目を通すため）
 const TECHS={
- mae:{name:'前回し', P:0.56, Tc:0.24, turns:1, be:0.05, r:0.035, hMin:12, hLift:32, tuck:0.00, lean:4,
+ mae:{name:'前回し', P:0.56, Tc:0.24, turns:1, be:0.05, r:0.025, hMin:12, hLift:32, tuck:0.00, lean:4,
   phases:[[0,'着地','つま先から静かに着く。かかとは床につけない（かかとを上げる）。ひざは軽く曲げるだけ。'],
           [0.07,'縄が頭の上','床についている間に、縄が後ろから頭の上を越えて前へ。ひじは脇につけたまま、手首で小さな円を描く。腕全体は回さない。'],
           [0.20,'踏み切り','縄が体の前に下りてくるのに合わせて、つま先で小さく跳ぶ。'],
           [0.33,'縄が足の下','縄が足の下を通る。跳ぶのは縄が通る高さで足りる（約12cm）。頭は動かさない。']]},
- niju:{name:'二重跳び', P:0.62, Tc:0.18, turns:2, be:0.02, r:0.040, hMin:8, hLift:36, tuck:0.06, lean:6,
+ niju:{name:'二重跳び', P:0.62, Tc:0.18, turns:2, be:0.02, r:0.030, hMin:8, hLift:36, tuck:0.06, lean:6,
   phases:[[0,'着地','つま先で着き、すぐ次の踏み切りへ。かかとを上げたまま、ひざで少しだけ受ける。'],
           [0.12,'踏み切り（強く）','前回しより高く跳ぶ（約24cm）。跳び上がるのと同時に手首を速く回す。'],
           [0.19,'1回目が足の下','跳び上がってすぐ1回目が足の下を通る。手首の円は小さく、速く。'],
@@ -116,7 +116,7 @@ let HT=null; // 記録：フレームごとの [a, r, θ]（θ：持ち手が縄
 function wristAR(sd,t,a,r){const sx=sd==='R'?-1:1;
   // 円は体の横から見て、上で前へ・下で後ろへ（前回しの縄と同じ向き）。腕は体と一緒に上下し、空中では少し遅れて下がる
   return v3(sx*HAND.x, pelY(t)+HAND.dy-0.02*airK(t)+r*Math.cos(a), HAND.z+r*Math.sin(a)); }
-const FA=v3(0,-0.35,1).normalize(), TWIST=32*D; // 前腕の軸（前・少し下）と、ひねりの大きさ
+const FA=v3(0,-0.35,1).normalize(), TWIST=16*D; // 前腕の軸（前・少し下）と、ひねりの大きさ
 const qtw=new THREE.Quaternion();
 function handQuatTh(sd,th,a){ // 手の向き：前腕のひねり（回内・回外）で付け根が上下し、手首の曲げ（θ）で前後に傾く。ひねりは手首の円と同じ周期
   qx.setFromAxisAngle(v3(1,0,0),th); qtw.setFromAxisAngle(FA,TWSIGN[sd]*TWIST*Math.cos(a||0)); return qtw.clone().multiply(qx).multiply(QBASE[sd]); }
@@ -170,7 +170,7 @@ function simulate(){ // 1周期を記録する（形を決めて描くので、�
   const N=Math.round(P*RECHZ), rec=[], ht=[]; SIMLOG=[];
   for(let f=0;f<N;f++){const t=f/RECHZ, psi=W0*t+PSIC, a=psi+LEAD, r=TECH.r;
     // 持ち手は、付け根から出る縄の向き（輪の手元の向き）へ傾く。もとの向きを重くした向き、±35°まで
-    const ang=psi+BOW, ay=1.6*TH0[0]+Math.cos(ang), az=1.6*TH0[1]+Math.sin(ang), th=Math.max(-35*D,Math.min(35*D,wrapA(Math.atan2(az,ay)-t0)));
+    const ang=psi+BOW, ay=1.6*TH0[0]+Math.cos(ang), az=1.6*TH0[1]+Math.sin(ang), th=Math.max(-15*D,Math.min(15*D,0.5*wrapA(Math.atan2(az,ay)-t0)));
     const A=tipAR('L',t,a,r,th), B=tipAR('R',t,a,r,th);
     rec.push(ropeShape(t,psi,A,B,new Float32Array(RN*3))); ht.push([a,r,th]);}
   return {rec, ht};
