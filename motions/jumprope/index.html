@@ -435,7 +435,7 @@ function htAt(t){ // 記録からの補間（周期の継ぎ目では角度に 2
   const aB=B[0]+(j<i?TAU*TECH.turns:0); return [A[0]+(aB-A[0])*f, A[1]+(B[1]-A[1])*f, A[2]+(B[2]-A[2])*f]; }
 function wristPos(sd,t){const [a,r]=htAt(t); return wristAR(sd,t,a,r);}
 function handQuat(sd,t){const h=htAt(t); return handQuatTh(sd,h[2],h[0]);}
-function tipPos(sd,t){const [a,r,th]=htAt(t); return tipAR(sd,t,a,r,th);}
+function tipPos(sd,t){const R=ropeAt(t,new Float32Array(RN*3)), i=sd==='L'?0:(RN-1)*3; return v3(R[i],R[i+1],R[i+2]);}
 const QBASE={};
 const SUPI=35*D, GRIPB=40*D, THZ=0.014; // 持ち手は手のひらの付け根から人差し指の付け根へ斜めに通る（指の向きから親指側へ40°）
 const HG={}; // 手の座標での持ち手：C＝中心、DL＝付け根（縄が出る端）への向き
@@ -480,7 +480,7 @@ function simulate(){ // 1周期を記録する（形を決めて描くので、�
   for(let f=0;f<N;f++){const t=f/RECHZ, psi=W0*t+PSIC, a=psi+LEAD, r=TECH.r;
     // 持ち手は、付け根から出る縄の向き（輪の手元の向き）へ傾く。もとの向きを重くした向き、±35°まで
     const ang=psi+BOW, ay=1.6*TH0[0]+Math.cos(ang), az=1.6*TH0[1]+Math.sin(ang), th=Math.max(-15*D,Math.min(15*D,0.5*wrapA(Math.atan2(az,ay)-t0)));
-    const A=tipAR('L',t,a,r,th), B=tipAR('R',t,a,r,th);
+    bodyOnly(t); poseArm('L',t,a,r,th); poseArm('R',t,a,r,th); const A=handTip('L'), B=handTip('R');
     rec.push(ropeShape(t,psi,A,B,new Float32Array(RN*3))); ht.push([a,r,th]);}
   return {rec, ht};
 }
@@ -490,13 +490,12 @@ function bottomTimes(rec){const res=[], mid=((RN-1)/2)*3, zc=0.03;
   return res;}
 const SOLVED={};
 function solveRope(k){
-  if(!SOLVED[k]){ SOLVED[k]=simulate(); }
+  if(!SOLVED[k]){ solveGrip(); SOLVED[k]={...simulate(), WP:JSON.parse(JSON.stringify(WP))}; } else Object.assign(WP,SOLVED[k].WP);
   REC=SOLVED[k].rec; HT=SOLVED[k].ht; RECN=REC.length;
 }
 function ropeAt(t,out){ // 記録した1周期から、時刻 t の縄（周期でくり返す）
   const x=ph(t)*RECHZ, i=Math.floor(x)%RECN, j=(i+1)%RECN, f=x-Math.floor(x), a=REC[i], b=REC[j];
   for(let n=0;n<RN*3;n++) out[n]=a[n]+(b[n]-a[n])*f;
-  const A=tipPos('L',t), B=tipPos('R',t); out[0]=A.x;out[1]=A.y;out[2]=A.z; const e=(RN-1)*3; out[e]=B.x;out[e+1]=B.y;out[e+2]=B.z; // 端は持ち手に合わせる
   return out; }
 
 // ---- 縄と持ち手の表示
@@ -549,15 +548,35 @@ const FOOT={x:0.058, z:0.0}; // 両足をそろえて跳ぶ
 function footTgt(sd,t){ // 足首の位置：床についている間は母指球を支点にかかとが上下、空中は体と一緒に上がる（二重跳びは足を少し後ろへたたむ）
   const sx=sd==='R'?-1:1, h=heelAng(t)*D, lift=Math.max(0,pelY(t)-YL), ak=airK(t);
   return v3(sx*FOOT.x, ankleH+Math.sin(h)*BALL+lift+TECH.tuck*ak, FOOT.z+BALL*(1-Math.cos(h))-TECH.tuck*1.2*ak); }
-function setPose(t){
+function bodyOnly(t){
   ['R','L'].forEach(sd=>{J_['cl'+sd].rotation.set(0,0,0);J_['fr'+sd].quaternion.set(0,0,0,1);});
-  const py=pelY(t), ak=airK(t);
-  body.quaternion.set(0,0,0,1); body.position.set(0,py-hipY,0.035);
+  body.quaternion.set(0,0,0,1); body.position.set(0,pelY(t)-hipY,0.035);
   // 体はほぼまっすぐ、少しだけ前に傾ける。頭は動かさない（首で前傾を打ち消し、正面を見る）
   const ln=TECH.lean;
   J_.pelvis.rotation.set(ln*0.4*D,0,0); J_.spine.rotation.set(ln*0.4*D,0,0); J_.chest.rotation.set(ln*0.2*D,0,0);
   J_.neck.rotation.set(-ln*0.6*D,0,0); J_.head.rotation.set(-ln*0.4*D,0,0);
   fig.root.updateMatrixWorld(true);
+}
+// 腕と手：前腕の向きを基準にする。前腕のひねり（もとの量＋手首の円と同じ周期の小さな往復）と、手首の小さな曲げ（反り・小指側への曲げ）で持ち手の向きを作る
+const WP={}; // 手ごとの [ひねり, 反り, 横曲げ, ひねりの向き]（solveGrip で決める）
+function poseArm(sd,t,a,r,th){ const sx=sd==='R'?-1:1, w=WP[sd];
+  MQ.armIK(sd,wristAR(sd,t,a,r),v3(sx*0.35,-0.4,-1));
+  J_['fr'+sd].quaternion.setFromAxisAngle(v3(0,1,0),w.tw+w.sg*TWIST*Math.cos(a||0));
+  J_['wr'+sd].rotation.set(w.ex+th,0,w.dv,'YXZ'); fig.root.updateMatrixWorld(true); }
+function handTip(sd){ return J_['wr'+sd].localToWorld(handleLocal(sd)); }
+function solveGrip(){ // 付け根が地面側の斜め外を向くように、前腕のひねりと手首の小さな曲げを探す（手首は ±20° まで）
+  bodyOnly(0);
+  ['R','L'].forEach(sd=>{const sx=sd==='R'?-1:1, rom=MQ.ROM['fr'+sd].y, want=DW(sd); let best=null;
+    for(let tw=rom[0];tw<=rom[1];tw+=5) for(let ex=-20;ex<=20;ex+=5) for(let dv=-20;dv<=20;dv+=5){
+      WP[sd]={tw:tw*D,ex:ex*D,dv:dv*D,sg:0}; poseArm(sd,0,Math.PI/2,TECH.r,0);
+      const dir=HG[sd].DL.clone().transformDirection(J_['wr'+sd].matrixWorld); const c=Math.acos(Math.max(-1,Math.min(1,dir.dot(want))))/D+0.15*(Math.abs(ex)+Math.abs(dv));
+      if(!best||c<best[0]) best=[c,tw,ex,dv];}
+    WP[sd]={tw:best[1]*D,ex:best[2]*D,dv:best[3]*D,sg:0, err:best[0]};
+    poseArm(sd,0,Math.PI/2,TECH.r,0); const y0=handTip(sd).y; WP[sd].tw+=0.2; poseArm(sd,0,Math.PI/2,TECH.r,0); const y1=handTip(sd).y; WP[sd].tw-=0.2; WP[sd].sg=y1>y0?1:-1; }); // ひねると付け根が上がる向きを正に
+}
+function setPose(t){
+  bodyOnly(t);
+  const py=pelY(t), ak=airK(t);
   // 脚：床についている間は母指球を支点にかかとが上下、空中は踏み切りの形のまま体と一緒に上がる（二重跳びは足を少し後ろへたたむ）
   const h=heelAng(t)*D, lift=Math.max(0,py-YL);
   [['L',1],['R',-1]].forEach(([sd,sx])=>{
@@ -571,9 +590,7 @@ function setPose(t){
   });
   // 腕：ひじは脇の近く（後ろ・少し外へ曲がる）、手首は円を描く
   [['R',-1],['L',1]].forEach(([sd,sx])=>{
-    MQ.armIK(sd,wristPos(sd,t),v3(sx*0.35,-0.4,-1));
-    fig.root.updateMatrixWorld(true);
-    setWorldQuat(J_['wr'+sd],handQuat(sd,t)); MQ.distributeTwist(sd);
+    {const [a,r,th]=htAt(t); poseArm(sd,t,a,r,th);}
     // こぶしで持ち手を握る
     fingers[sd].forEach(f=>{f.base.rotation.set(-70*D,0,f.spread*2*D); f.j2.rotation.set(-80*D,0,0);});
     const T=fingers[sd].thumb; {const P=HG[sd].C.clone().add(HG[sd].DL.clone().multiplyScalar(0.05)).add(v3(0,0,HANDLE.rad+THZ)); T.tb.quaternion.setFromUnitVectors(v3(0,-1,0),P.sub(T.tb.position).normalize());} T.tj.rotation.set(-0.15,0,0); // 親指は持ち手の上に乗せ、付け根の方へ伸ばす
@@ -656,7 +673,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 // 検証用
-window.__motion={MQ,HANDLES,HANDLE,HG,QBASE,rom:MQ.ROM,DUR:1,setPose:t=>frameAt(t),J:J_,headMesh:MQ.headMesh,armLen:L1+L2,legLen:T1+T2,
+window.__motion={MQ,HANDLES,HANDLE,HG,QBASE,WP,rom:MQ.ROM,DUR:1,setPose:t=>frameAt(t),J:J_,headMesh:MQ.headMesh,armLen:L1+L2,legLen:T1+T2,
   rope:t=>Array.from(ropeAt(t,new Float32Array(RN*3))), tech:()=>techKey, info:()=>({P,TC,TF,PR,YL,DIP,log:SIMLOG,bottoms:REC?bottomTimes(REC):[],target:targetBottoms()}),
   useTech, view:(a,e,z,f)=>{az=a;el=e;zoom=z;focus=f||"body";dirty=true;},
   contacts:[['footL','anL','hpL','L'],['footR','anR','hpR','R']].map(([name,joint,root,sd])=>({name,joint,root,reach:T1+T2,at:t=>ph(t)<TC?Object.assign({w:1},footTgt(sd,t)):null})),
