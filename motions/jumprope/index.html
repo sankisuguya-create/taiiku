@@ -49,7 +49,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   <div class="row" id="zooms"><p class="label">大きさ（2本指でつまんでも変えられます）</p></div>
   <div class="row" id="skins"><p class="label">見た目</p></div>
   <div class="row" id="views"><p class="label">見る向き（指でドラッグしても回せます）</p></div>
-  <p class="note">人形は人体寸法の実測比から作った中間案（約6頭身、身長約1.45m）。縄は長さ2.3m・重さ120gのひもを41個の点に分け、重さ・空気の抵抗・床との当たりを計算して動かしたもの（物理計算）。縄の形は計算の結果で、手で描いたものではありません（ただし回る速さだけは、人が手ごたえを感じて手首の加減で合わせる分を、補助の力で一定に保っています）。手首は「ひじを脇につけ、手首で小さな円を描く」動きを与え、持ち手は親指側の端（付け根）から縄が出て、親指と付け根は地面側の斜め外向き。前腕のひねりで付け根を上下させ、縄に引かれる向きへ傾けています。跳ぶ高さ・回数とこつ（頭を動かさない・速く回す・かかとを上げる）は二重跳びの練習動画の要点に合わせました。手首の角度そのものは動画から測れないため、推定です。</p>
+  <p class="note">人形は人体寸法の実測比から作った中間案（約6頭身、身長約1.45m）。縄は物理計算ではなく、形を決めて描いたもの：両手の持ち手の付け根から出て、手の高さの軸のまわりを回る輪（床では平らに滑り、体に当たらない大きさ）。手首は「わきを締め、前腕のひねりと手首の小さな円で回す」動きを与え、親指は持ち手の上、付け根は地面側の斜め外向き。跳ぶ高さ・回数とこつ（頭を動かさない・速く回す・かかとを上げる）は二重跳びの練習動画の要点に合わせました。手首の角度は動画から測れないため推定です。</p>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -455,74 +455,29 @@ const TH0=(()=>{const d=DW('R'); const n=Math.hypot(d.y,d.z); return [d.y/n,d.z/
 function handleLocal(sd){return HG[sd].C.clone().add(HG[sd].DL.clone().multiplyScalar(HANDLE.tip));} // 付け根（縄が出る端）
 
 // ---- 縄の物理計算
-const LEAD=1.4, GUIDE=15, BEARLY=0.035, DAMPI=0.02; // BEARLY：縄が足の下を通るのを空中の真ん中より少し早く（床を滑っているうちに通す。床で跳ね返った縄がつま先に当たらない） // 手首が縄より先を回る角度（ラジアン）、補助の強さ
-const RN=41, RL=2.30, RMASS=0.12, RDIA=0.005, RRAD=0.006, SUB=2400, ITER=5;
+const LEAD=1.4; // 手首が縄より先を回る角度（ラジアン）
+// 縄の形（物理計算ではなく、形を決めて描く）：両手の持ち手の先を結ぶ線から、手の高さの軸のまわりへ半径 RAD の輪。
+// 輪の幅の形は sin^Q（小さいほど底が広く平ら）。手に近い所は先へ進み（BOW）、縄が後からついてくるしなりに見せる。床より下へは行かず、床では平らに滑る
+const RN=41, RRAD=0.006, RAD=0.98, Q=0.28, BOW=0.45, OUTW=0.09; // OUTW：正面から見て輪を手の幅より外へふくらませる量
 let REC=null, RECHZ=240, RECN=0;
 const wrapA=x=>Math.atan2(Math.sin(x),Math.cos(x));
-function targetBottoms(){const mid=TC+TF/2-(TECH.be??BEARLY); return TECH.turns===1?[mid]:[mid-PR/2,mid+PR/2];}
+function targetBottoms(){const mid=TC+TF/2-(TECH.be??0); return TECH.turns===1?[mid]:[mid-PR/2,mid+PR/2];}
 let SIMLOG=null;
-function simulate(warm){ // warm 周期ぶん回して縄の回り方を合わせてから、1周期と継ぎ目用の少しを記録する
-  const seg=RL/(RN-1), m=RMASS/(RN-1), k=0.5*1.2*1.2*RDIA*seg/m; // 空気の抵抗（抗力係数1.2）
-  const X=new Float64Array(RN*3), Xp=new Float64Array(RN*3), dt=1/SUB, W0=TAU/PR, MID=((RN-1)/2)*3;
-  const PSIC=Math.PI-W0*targetBottoms()[0]; // 縄の真ん中が真下（角度π）に来る時刻を、目標の時刻へ
-  let a=0, r=TECH.r, rI=TECH.r, th=0, psiU=0, psiPrev=0, wf=W0;
-  const center=t=>[pelY(t)+HAND.dy-0.02*airK(t), HAND.z];
-  { // 始め：手と手の間に弧を作り、目標の速さで回っている状態から始める
-    const psi=W0*0+PSIC; a=psi+1.4; const A=tipAR('L',0,a,r,0), B=tipAR('R',0,a,r,0), [cy,cz]=center(0);
-    for(let i=0;i<RN;i++){const s=i/(RN-1); const p=A.clone().lerp(B,s); const R=0.9*Math.pow(Math.sin(Math.PI*s),0.7);
-      p.y=cy+R*Math.cos(psi); p.z=cz+R*Math.sin(psi); const vy=-W0*R*Math.sin(psi), vz=W0*R*Math.cos(psi);
-      X[i*3]=p.x; X[i*3+1]=p.y; X[i*3+2]=p.z; Xp[i*3]=p.x; Xp[i*3+1]=p.y-vy*dt; Xp[i*3+2]=p.z-vz*dt;}
-    psiU=psi; psiPrev=psi;
-  }
-  const steps=Math.round((warm+1.2)*P*SUB), recStart=Math.round(warm*P*SUB), every=SUB/RECHZ;
-  const rec=[], ht=[]; SIMLOG=[];
-  for(let st=0;st<=steps;st++){
-    const t=st*dt;
-    // 縄の真ん中の角度（手首の高さの軸まわり、上が0、前が＋）
-    const [cy,cz]=center(t); const psi=Math.atan2(X[MID+2]-cz,X[MID+1]-cy); psiU+=wrapA(psi-psiPrev); psiPrev=psi;
-    if(st>=recStart&&(st-recStart)%every===0){rec.push(Float32Array.from(X)); ht.push([a,r,th]);}
-    if(st%240===0) SIMLOG.push([+(t).toFixed(2),+r.toFixed(3),+wrapA(psiU-(W0*t+PSIC)).toFixed(2)]);
-    if(st===steps) break;
-    // 手首は目標の速さで円を描き、縄より少し先を回る（位相は体の跳ぶ周期に固定）
-    const e=wrapA(psiU-(W0*t+PSIC));
-    a=W0*t+PSIC+LEAD; r=TECH.r;
-    // 持ち手は縄に引かれる向きへ傾く（真下を重くした向き）。急に向きを変えないように少し遅らせる
-    { const dy=X[4]-X[1], dz=X[5]-X[2], n=Math.hypot(dy,dz)||1; const t0y=TH0[0], t0z=TH0[1], ay=1.6*t0y+dy/n, az=1.6*t0z+dz/n; const tT=Math.max(-35*D,Math.min(35*D,wrapA(Math.atan2(az,ay)-Math.atan2(t0z,t0y)))); th+=(tT-th)*dt/0.03; }
-    const A=tipAR('L',t+dt,a,r,th), B=tipAR('R',t+dt,a,r,th);
-    // 回る速さの補助：縄全体の回る速さ（角運動量から）を目標へ。各点を今動いている向きへ同じ割合で押す（形は変えない。人が手首の加減で行う調整の代わり）
-    let Ln=0, In=0; for(let i=1;i<RN-1;i++){const j=i*3, y=X[j+1]-cy, z=X[j+2]-cz, vy=(X[j+1]-Xp[j+1])/dt, vz=(X[j+2]-Xp[j+2])/dt; Ln+=y*vz-z*vy; In+=y*y+z*z;}
-    const gerr=(W0-4*e)-Ln/(In||1), gk=Math.max(-6,Math.min(6,GUIDE*gerr/W0)); // 動いている向きに押す（床を滑る縄を持ち上げない）
-    for(let i=1;i<RN-1;i++){const j=i*3;
-      const vx=(X[j]-Xp[j])/dt, vy=(X[j+1]-Xp[j+1])/dt, vz=(X[j+2]-Xp[j+2])/dt;
-      let tx=X[j+3]-X[j-3], ty=X[j+4]-X[j-2], tz=X[j+5]-X[j-1]; const tn=Math.hypot(tx,ty,tz)||1; tx/=tn;ty/=tn;tz/=tn;
-      const vt=vx*tx+vy*ty+vz*tz; const px=vx-vt*tx, py=vy-vt*ty, pz=vz-vt*tz, pv=Math.hypot(px,py,pz); // 縄に垂直な速さの成分だけに抵抗
-      const gx=px*gk, gy=py*gk, gz=pz*gk; // 縄に垂直な向きだけ（縄を伸ばさない）
-      const nx=X[j]+vx*dt+(-k*pv*px+gx)*dt*dt, ny=X[j+1]+vy*dt+(-G-k*pv*py+gy)*dt*dt, nz=X[j+2]+vz*dt+(-k*pv*pz+gz)*dt*dt;
-      Xp[j]=X[j]; Xp[j+1]=X[j+1]; Xp[j+2]=X[j+2]; X[j]=nx; X[j+1]=ny; X[j+2]=nz;}
-    Xp[0]=X[0];Xp[1]=X[1];Xp[2]=X[2]; X[0]=A.x;X[1]=A.y;X[2]=A.z;
-    const E=(RN-1)*3; Xp[E]=X[E];Xp[E+1]=X[E+1];Xp[E+2]=X[E+2]; X[E]=B.x;X[E+1]=B.y;X[E+2]=B.z;
-    for(let it=0;it<ITER;it++){
-      for(let i=0;i<RN-1;i++){const p=i*3,q=p+3; const dx=X[q]-X[p], dy=X[q+1]-X[p+1], dz=X[q+2]-X[p+2]; const d=Math.hypot(dx,dy,dz)||1e-9, c=(d-seg)/d;
-        const wa=i===0?0:1, wb=i===RN-2?0:1, ws=wa+wb;
-        X[p]+=dx*c*wa/ws; X[p+1]+=dy*c*wa/ws; X[p+2]+=dz*c*wa/ws; X[q]-=dx*c*wb/ws; X[q+1]-=dy*c*wb/ws; X[q+2]-=dz*c*wb/ws;}
-    }
-    { // 縄の中の摩擦：となりどうしの速さの差を少しずつ減らす（細かい波が残らない）
-      const V=new Float64Array(RN*3); for(let n=0;n<RN*3;n++) V[n]=X[n]-Xp[n];
-      for(let i=1;i<RN-1;i++){const j=i*3; for(let c=0;c<3;c++){const avg=(V[j-3+c]+V[j+3+c])/2; Xp[j+c]=X[j+c]-(V[j+c]+(avg-V[j+c])*DAMPI);}} }
-    for(let i=1;i<(RN-1)/2;i++){const j=i*3, q=(RN-1-i)*3; // 両手は左右対称なので、縄も左右対称に保つ（横に揺れる成分を除く）
-      for(const B of [X,Xp]){const x=(B[j]-B[q])/2, y=(B[j+1]+B[q+1])/2, z=(B[j+2]+B[q+2])/2; B[j]=x;B[q]=-x;B[j+1]=B[q+1]=y;B[j+2]=B[q+2]=z;}}
-    { const j=((RN-1)/2)*3; X[j]=0; Xp[j]=0; }
-    for(let i=1;i<RN-1;i++){const j=i*3; if(X[j+1]<RRAD){X[j+1]=RRAD; if(Xp[j+1]<RRAD)Xp[j+1]=RRAD; // 床：めり込まず、横には少しこすれて減速する
-      Xp[j]=X[j]-(X[j]-Xp[j])*0.9995; Xp[j+2]=X[j+2]-(X[j+2]-Xp[j+2])*0.9995;}}
-    // 縄の回る速さ（なめらかにした値）
-    { const [cy2,cz2]=center(t+dt); const p2=Math.atan2(X[MID+2]-cz2,X[MID+1]-cy2); wf+=(wrapA(p2-psi)/dt-wf)*dt/0.12; }
-  }
-  // 継ぎ目：記録の最後の少し（1周期の先）を、始めへなめらかにつなぐ
-  const N=Math.round(P*RECHZ), Mx=rec.length-N, out=[], hto=[];
-  for(let f=0;f<N;f++){ if(f<Mx){const u=smooth(f/Mx), A=rec[N+f], B=rec[f], o=new Float32Array(RN*3); for(let n=0;n<RN*3;n++) o[n]=A[n]+(B[n]-A[n])*u; out.push(o);
-      const ha=ht[N+f], hb=ht[f]; hto.push([ha[0]-TAU*TECH.turns+(hb[0]-(ha[0]-TAU*TECH.turns))*u, ha[1]+(hb[1]-ha[1])*u, ha[2]+(hb[2]-ha[2])*u]);}
-    else {out.push(rec[f]); hto.push(ht[f]);} }
-  return {rec:out, ht:hto};
+function ropeShape(t,psi,A,B,out){ const [cy,cz]=[pelY(t)+HAND.dy-0.02*airK(t), HAND.z];
+  for(let i=0;i<RN;i++){const s=i/(RN-1), w=Math.pow(Math.sin(Math.PI*s),Q), ang=psi+BOW*(1-Math.sin(Math.PI*s));
+    const bx=A.x+(B.x-A.x)*s+OUTW*Math.sin(2*Math.PI*s), by=A.y+(B.y-A.y)*s, bz=A.z+(B.z-A.z)*s;
+    let y=by+RAD*w*Math.cos(ang), z=bz+RAD*w*Math.sin(ang);
+    if(y<RRAD) y=RRAD; out[i*3]=bx; out[i*3+1]=y; out[i*3+2]=z;}
+  return out; }
+function simulate(){ // 1周期を記録する（形を決めて描くので、計算はすぐ終わる）
+  const W0=TAU/PR, PSIC=Math.PI-W0*targetBottoms()[0], t0=Math.atan2(TH0[1],TH0[0]);
+  const N=Math.round(P*RECHZ), rec=[], ht=[]; SIMLOG=[];
+  for(let f=0;f<N;f++){const t=f/RECHZ, psi=W0*t+PSIC, a=psi+LEAD, r=TECH.r;
+    // 持ち手は、付け根から出る縄の向き（輪の手元の向き）へ傾く。もとの向きを重くした向き、±35°まで
+    const ang=psi+BOW, ay=1.6*TH0[0]+Math.cos(ang), az=1.6*TH0[1]+Math.sin(ang), th=Math.max(-35*D,Math.min(35*D,wrapA(Math.atan2(az,ay)-t0)));
+    const A=tipAR('L',t,a,r,th), B=tipAR('R',t,a,r,th);
+    rec.push(ropeShape(t,psi,A,B,new Float32Array(RN*3))); ht.push([a,r,th]);}
+  return {rec, ht};
 }
 // 縄が足の下を通る時刻（縄の真ん中が体の中心の前後位置を、低い所で後ろへ通る）
 function bottomTimes(rec){const res=[], mid=((RN-1)/2)*3, zc=0.03;
@@ -530,7 +485,7 @@ function bottomTimes(rec){const res=[], mid=((RN-1)/2)*3, zc=0.03;
   return res;}
 const SOLVED={};
 function solveRope(k){
-  if(!SOLVED[k]){ const s=simulate(TECH.turns===1?14:12); SOLVED[k]=s; }
+  if(!SOLVED[k]){ SOLVED[k]=simulate(); }
   REC=SOLVED[k].rec; HT=SOLVED[k].ht; RECN=REC.length;
 }
 function ropeAt(t,out){ // 記録した1周期から、時刻 t の縄（周期でくり返す）
