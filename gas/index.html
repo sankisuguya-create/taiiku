@@ -32,16 +32,32 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .msg{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;line-height:1.7}
 .ver{font-size:.75rem;color:var(--muted);margin:0}
 [hidden]{display:none !important}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.gear{height:48px;padding:0 16px;font-size:.95rem}
+.gear[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.set{display:flex;flex-direction:column;gap:16px}
+.setu{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 16px}
+.row2{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:56px;border-top:1px solid var(--line)}
+.row2:first-child{border-top:0}
+.row2 .nm{font-weight:700}
+.row2.sub .nm{font-weight:500;padding-left:24px}
+.row2.off .nm{color:var(--muted)}
+.sw{width:88px;height:48px;border-radius:24px;position:relative;padding:0;flex:none;background:#c9d3da;border-color:#c9d3da}
+.sw::after{content:"";position:absolute;top:4px;left:4px;width:36px;height:36px;border-radius:50%;background:#fff;transition:left .15s}
+.sw[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.sw[aria-checked="true"]::after{left:44px}
+.note2{font-size:.85rem;color:var(--muted);margin:0;line-height:1.6}
 </style>
 </head>
 <body>
 <div class="wrap" id="home">
-  <h1>体育 うごきの教材</h1>
+  <div class="top"><h1>体育 うごきの教材</h1><button class="gear" id="gear" aria-pressed="false" hidden>先生の設定</button></div>
   <p class="lead" id="lead">単元をえらぶ</p>
   <div class="msg" id="msg" hidden></div>
   <button class="back" id="toUnits" hidden>← 単元にもどる</button>
   <div class="grid" id="units"></div>
   <div class="grid" id="acts" hidden></div>
+  <div class="set" id="set" hidden><p class="note2">スイッチを切ると、その単元・動きは子どもの画面に出なくなります。押すとすぐ保存され、子どもが次に開いた時から反映されます。</p><div id="setList" class="set"></div></div>
   <p class="ver" id="ver">読み込み中…</p>
 </div>
 <div class="player" id="player">
@@ -49,10 +65,10 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   <iframe id="frame" title="うごきの教材"></iframe>
 </div>
 <script>
-var SHELL_VER = 1;
+var SHELL_VER = 2;
 var REPO = 'sankisuguya-create/taiiku';
 var HOSTS = ['https://cdn.jsdelivr.net', 'https://fastly.jsdelivr.net', 'https://gcore.jsdelivr.net'];
-var REF = null, SRC = '', UNITS = null, CUR = null;
+var REF = null, SRC = '', UNITS = null, CUR = null, STATE = { teacher: false, hidden: [] }, EDIT = false;
 var $ = function (id) { return document.getElementById(id); };
 
 function withTimeout(p, ms) {
@@ -84,12 +100,17 @@ function fetchText(path) {
   return next();
 }
 
+function isHidden(k) { return STATE.hidden.indexOf(k) >= 0; }
+function visUnits() { return UNITS.units.filter(function (u) { return !isHidden(u.id); }).map(function (u) { return { id: u.id, name: u.name, actions: u.actions.filter(function (a) { return !isHidden(u.id + '/' + a.name); }) }; }).filter(function (u) { return u.actions.length > 0; }); }
+function run(name, args) { return new Promise(function (ok, ng) { if (!(window.google && google.script && google.script.run)) return ng(new Error('GAS の外で開いています')); var r = google.script.run.withSuccessHandler(ok).withFailureHandler(ng); if (typeof r[name] !== 'function') return ng(new Error('サーバーに「' + name + '」がありません（器 ' + SHELL_VER + '）')); r[name].apply(r, args || []); }); }
+function loadState() { return run('apiState').then(function (st) { if (st && Array.isArray(st.hidden)) STATE = st; }, function () { }); }
 function showMsg(t) { $('msg').textContent = t; $('msg').hidden = !t; }
 
 function renderUnits() {
-  CUR = null; $('lead').textContent = '単元をえらぶ'; $('toUnits').hidden = true; $('acts').hidden = true; $('units').hidden = false;
-  var box = $('units'); box.innerHTML = '';
-  UNITS.units.forEach(function (u) {
+  CUR = null; $('lead').textContent = '単元をえらぶ'; $('toUnits').hidden = true; $('acts').hidden = true; $('set').hidden = true; $('units').hidden = false;
+  var box = $('units'); box.innerHTML = ''; var list = visUnits();
+  if (!list.length) { var p = document.createElement('p'); p.className = 'lead'; p.textContent = '今は見られる単元がありません。'; box.appendChild(p); }
+  list.forEach(function (u) {
     var b = document.createElement('button'); b.className = 'unit'; b.id = 'unit-' + u.id;
     b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = u.name; b.lastChild.textContent = u.actions.length + 'つの動き';
     b.onclick = function () { renderActs(u); }; box.appendChild(b);
@@ -97,7 +118,7 @@ function renderUnits() {
 }
 
 function renderActs(u) {
-  CUR = u; $('lead').textContent = u.name + '：動きをえらぶ'; $('toUnits').hidden = false; $('units').hidden = true; $('acts').hidden = false;
+  CUR = u; $('lead').textContent = u.name + '：動きをえらぶ'; $('toUnits').hidden = false; $('units').hidden = true; $('set').hidden = true; $('acts').hidden = false;
   var box = $('acts'); box.innerHTML = '';
   u.actions.forEach(function (a, i) {
     var b = document.createElement('button'); b.className = 'act'; b.id = 'act-' + u.id + '-' + i; b.textContent = a.name;
@@ -124,6 +145,32 @@ function openAction(a) {
 
 function closePlayer() { $('player').classList.remove('on'); var f = $('frame'); f.onload = null; f.removeAttribute('srcdoc'); f.src = 'about:blank'; }
 
+function renderSettings() {
+  $('lead').textContent = '先生の設定：子どもの画面に出す単元・動き'; $('toUnits').hidden = true; $('units').hidden = true; $('acts').hidden = true; $('set').hidden = false;
+  var box = $('setList'); box.innerHTML = '';
+  UNITS.units.forEach(function (u) {
+    var card = document.createElement('div'); card.className = 'setu';
+    card.appendChild(swRow(u.name, u.id, false));
+    u.actions.forEach(function (a) { card.appendChild(swRow(a.name, u.id + '/' + a.name, true, u.id)); });
+    box.appendChild(card);
+  });
+}
+function swRow(name, key, sub, parent) {
+  var row = document.createElement('div'); row.className = 'row2' + (sub ? ' sub' : '');
+  var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = name;
+  var b = document.createElement('button'); b.className = 'sw'; b.setAttribute('role', 'switch'); b.id = 'sw-' + key;
+  b.setAttribute('aria-label', name + 'を子どもの画面に出す');
+  var on = !isHidden(key), pOff = parent && isHidden(parent);
+  b.setAttribute('aria-checked', String(on)); if (!on) nm.textContent = name + '（出さない）'; else if (pOff) nm.textContent = name + '（単元ごと出さない）';
+  if (!on || pOff) row.classList.add('off');
+  b.onclick = function () {
+    var hide = b.getAttribute('aria-checked') === 'true'; b.disabled = true;
+    run('apiSetHidden', [key, hide]).then(function (list) { STATE.hidden = list; showMsg(''); renderSettings(); })
+      .catch(function (e) { b.disabled = false; showMsg('保存できませんでした（' + e.message + '）。'); });
+  };
+  row.appendChild(nm); row.appendChild(b); return row;
+}
+$('gear').onclick = function () { EDIT = !EDIT; $('gear').setAttribute('aria-pressed', String(EDIT)); $('gear').textContent = EDIT ? '設定を閉じる' : '先生の設定'; if (EDIT) renderSettings(); else renderUnits(); };
 $('toUnits').onclick = renderUnits;
 $('closeP').onclick = closePlayer;
 
@@ -132,7 +179,9 @@ resolveLatest().then(function (ref) {
   $('ver').textContent = '版 ' + String(ref).slice(0, 7) + '（' + SRC + '）・器 ' + SHELL_VER;
   return fetchText('units.json');
 }).then(function (t) {
-  UNITS = JSON.parse(t);
+  UNITS = JSON.parse(t); return loadState().then(function () { return t; });
+}).then(function () {
+  $('gear').hidden = !STATE.teacher;
   if ((UNITS.shellMin || 0) > SHELL_VER) showMsg('この器は古い版です（器 ' + SHELL_VER + '、必要 ' + UNITS.shellMin + '）。先生へ：gas/README.md の手順で、Code.gs と index.html を貼り直してください。');
   renderUnits();
 }).catch(function (e) { showMsg('教材の一覧を読み込めませんでした（' + e.message + '）。通信を確かめて、ページを開き直してください。'); $('ver').textContent = ''; });
